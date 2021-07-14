@@ -517,6 +517,8 @@ void EncLib::encodePicture( bool flush, const vvencYUVBuffer* yuvInBuf, AccessUn
       au.cts      = encList[0]->cts * m_TicksPerFrame;
       au.ctsValid = encList[0]->ctsValid;
 
+      // Maybe we should subtract the maximum decoding/display delay here.
+      // Not sure how to get it / if this is a requirement.
       au.dts      = m_numPicsCoded * m_TicksPerFrame;
       au.dtsValid = true;
     }
