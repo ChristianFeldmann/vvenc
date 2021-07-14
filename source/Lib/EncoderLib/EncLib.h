@@ -79,7 +79,7 @@ private:
   int                       m_pocEncode;
   int                       m_pocRecOut;
   int                       m_GOPSizeLog2;
-  int                       m_TicksPerFrameMul4;
+  int                       m_TicksPerFrame;
   int                       m_numPassInitialized;
 
   const VVEncCfg            m_cEncCfg;

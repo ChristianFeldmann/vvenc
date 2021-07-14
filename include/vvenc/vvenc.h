@@ -173,7 +173,7 @@ typedef struct vvencAccessUnit
   int             payloadUsedSize;     // length of the coded data in bytes
 
   uint64_t        cts;                 // composition time stamp in TicksPerSecond (see vvenc_config)
-  uint64_t        dts;                 // decoding time stamp in TicksPerSecond (see vvenc_config)
+  int64_t         dts;                 // decoding time stamp in TicksPerSecond (see vvenc_config)
   bool            ctsValid;            // composition time stamp valid flag (true: valid, false: CTS not set)
   bool            dtsValid;            // decoding time stamp valid flag (true: valid, false: DTS not set)
   bool            rap;                 // random access point flag (true: AU is random access point, false: sequential access)
