@@ -50,9 +50,9 @@ install( FILES     ${CMAKE_BINARY_DIR}/vvenc/version.h  DESTINATION ${CMAKE_INST
 install( DIRECTORY include/vvenc                        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} )
 
 # install targets
-install_targets( Release )
-install_targets( Debug )
-install_targets( RelWithDebInfo )
+# install_targets( Release )
+# install_targets( Debug )
+# install_targets( RelWithDebInfo )
 
 # install pdb files
 install_lib_pdb( vvenc )

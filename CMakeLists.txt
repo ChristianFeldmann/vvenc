@@ -1,7 +1,7 @@
 # Top level CMakeLists.txt
 #
 # minimum required cmake version
-cmake_minimum_required( VERSION 3.13.0 FATAL_ERROR )
+cmake_minimum_required( VERSION 3.10.2 FATAL_ERROR )
 
 # set cmake policy
 if( NOT CMAKE_VERSION VERSION_LESS 3.13.0 )
