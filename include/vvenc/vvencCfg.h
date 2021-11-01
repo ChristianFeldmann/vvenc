@@ -180,10 +180,11 @@ typedef enum
 /// supported IDR types
 typedef enum
 {
-  VVENC_DRT_NONE               = 0,
-  VVENC_DRT_CRA                = 1,
-  VVENC_DRT_IDR                = 2,
-  VVENC_DRT_RECOVERY_POINT_SEI = 3
+  VVENC_DRT_NONE = 0,
+  VVENC_DRT_CRA,
+  VVENC_DRT_IDR,
+  VVENC_DRT_RECOVERY_POINT_SEI,
+  VVENC_DRT_IDR2,
 }vvencDecodingRefreshType;
 
 typedef enum
@@ -393,6 +394,7 @@ VVENC_DECL void vvenc_ReshapeCW_default(vvencReshapeCW *ReshapeCW );
 typedef struct vvencMCTF
 {
   int                 MCTF;
+  int                 MCTFSpeed;
   bool                MCTFFutureReference;
   int                 MCTFNumLeadFrames;
   int                 MCTFNumTrailFrames;
@@ -411,6 +413,7 @@ typedef struct vvenc_config
 {
 
   // basic config params
+  bool                m_configDone;
   bool                m_confirmFailed;                                                   // state variable
 
   vvencMsgLevel       m_verbosity;                                                       // encoder verbosity
@@ -436,6 +439,7 @@ typedef struct vvenc_config
 
   int                 m_RCTargetBitrate;
   int                 m_RCNumPasses;
+  int                 m_RCPass;
 
   vvencSegmentMode    m_SegmentMode;
 
@@ -555,9 +559,8 @@ typedef struct vvenc_config
   bool                m_fastQtBtEnc;
   bool                m_contentBasedFastQtbt;
   int                 m_fastInterSearchMode;                                             // Parameter that controls fast encoder settings
-  bool                m_bUseEarlyCU;                                                     // flag for using Early CU setting
+  int                 m_useEarlyCU;                                                      // flag for using Early CU setting
   bool                m_useFastDecisionForMerge;                                         // flag for using Fast Decision Merge RD-Cost
-  bool                m_useEarlySkipDetection;                                           // flag for using Early SKIP Detection
 
   bool                m_bDisableIntraCUsInInterSlices;                                   // Flag for disabling intra predicted CUs in inter slices.
   bool                m_bUseConstrainedIntraPred;                                        // flag for using constrained intra prediction
@@ -577,17 +580,20 @@ typedef struct vvenc_config
   int                 m_Geo;
   unsigned            m_maxNumGeoCand;
   int                 m_FastIntraTools;
+  int                 m_IntraEstDecBit;                                                  // Intra estimation decimation factor.
 
   int                 m_RCInitialQP;
   bool                m_RCForceIntraQP;
 
   int                 m_motionEstimationSearchMethod;
+  int                 m_motionEstimationSearchMethodSCC;
   bool                m_bRestrictMESampling;                                             // Restrict sampling for the Selective ME
   int                 m_SearchRange;                                                     // ME search range
   int                 m_bipredSearchRange;                                               // ME search range for bipred refinement
   int                 m_minSearchWindow;                                                 // ME minimum search window size for the Adaptive Window ME
   bool                m_bClipForBiPredMeEnabled;                                         // Enables clipping for Bi-Pred ME.
   bool                m_bFastMEAssumingSmootherMVEnabled;                                // Enables fast ME assuming a smoother MV.
+  bool                m_bIntegerET;                                                      // Enables early termination for integer motion search.
   int                 m_fastSubPel;
   int                 m_SMVD;
   int                 m_AMVRspeed;
@@ -598,7 +604,7 @@ typedef struct vvenc_config
   bool                m_BDOF;
   bool                m_DMVR;
   int                 m_EDO;
-  bool                m_lumaReshapeEnable;
+  int                 m_lumaReshapeEnable;
   int                 m_reshapeSignalType;
   int                 m_updateCtrl;
   int                 m_adpOption;
@@ -630,6 +636,11 @@ typedef struct vvenc_config
 
   int                 m_IBCMode;
   int                 m_IBCFastMethod;
+
+  int                 m_BCW;
+
+  int                 m_FIMMode;
+  int                 m_FastInferMerge;
 
   bool                m_bLoopFilterDisable;                                              // flag for using deblocking filter
   bool                m_loopFilterOffsetInPPS;                                           // offset for deblocking filter in 0 = slice header, 1 = PPS
@@ -680,11 +691,15 @@ typedef struct vvenc_config
   bool                m_ccalf;
   int                 m_ccalfQpThreshold;
   int                 m_alfTempPred;                                                     // Indicates using of temporal filter data prediction through APS
+  int                 m_alfSpeed;
 
   vvencMCTF           m_vvencMCTF;
 
-  int                 m_dqThresholdVal;
+  int                 m_quantThresholdVal;
   int                 m_qtbttSpeedUp;
+#if 1//QTBTT_SPEED3
+  int                 m_qtbttSpeedUpMode;
+#endif
 
   int                 m_fastLocalDualTreeMode;
 
@@ -710,6 +725,10 @@ typedef struct vvenc_config
   char                m_summaryOutFilename[VVENC_MAX_STRING_LEN];                        // filename to use for producing summary output file.
   char                m_summaryPicFilenameBase[VVENC_MAX_STRING_LEN];                    // Base filename to use for producing summary picture output files. The actual filenames used will have I.txt, P.txt and B.txt appended.
   unsigned            m_summaryVerboseness;                                              // Specifies the level of the verboseness of the text output.
+  int                 m_numIntraModesFullRD;                                             // Number Modes for Full RD Intra Search
+  bool                m_reduceIntraChromaModesFullRD;                                    // Reduce Number Modes for Full RD Intra Chroma Search
+
+
 }vvenc_config;
 
 VVENC_DECL void vvenc_config_default( vvenc_config *cfg );

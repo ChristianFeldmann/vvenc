@@ -313,8 +313,8 @@ static int getGlaringColorQPOffsetSubCtu (Picture* const pic, const CompArea& lu
 
 // public functions
 
-int BitAllocation::applyQPAdaptationChroma (const Slice* slice, const VVEncCfg* encCfg, const int sliceQP, std::vector<int>& ctuPumpRedQP,
-                                            int optChromaQPOffset[2])
+int BitAllocation::applyQPAdaptationChroma (const Slice* slice, const VVEncCfg* encCfg, const int sliceQP,
+                                            std::vector<int>& ctuPumpRedQP, int optChromaQPOffset[2], double* picVisActY /*= nullptr*/)
 {
   Picture* const pic          = (slice != nullptr ? slice->pic : nullptr);
   double hpEner[MAX_NUM_COMP] = {0.0, 0.0, 0.0};
@@ -323,7 +323,7 @@ int BitAllocation::applyQPAdaptationChroma (const Slice* slice, const VVEncCfg* 
 
   if (pic == nullptr || encCfg == nullptr || optChromaQPOffset == nullptr) return -1;
 
-  const bool isHDR            = encCfg->m_HdrMode != vvencHDRMode::VVENC_HDR_OFF;
+  const bool isHDR            = (encCfg->m_HdrMode != vvencHDRMode::VVENC_HDR_OFF) && !(encCfg->m_lumaReshapeEnable != 0 && encCfg->m_reshapeSignalType == RESHAPE_SIGNAL_PQ);
   const bool isHighResolution = (encCfg->m_PadSourceWidth > 2048 || encCfg->m_PadSourceHeight > 1280);
   const int          bitDepth = slice->sps->bitDepths[CH_L];
 
@@ -371,6 +371,7 @@ int BitAllocation::applyQPAdaptationChroma (const Slice* slice, const VVEncCfg* 
 
       optChromaQPOffset[comp-1] = std::min (3 + lumaChromaMappingDQP, adaptChromaQPOffset + lumaChromaMappingDQP);
     } // isChroma (compID)
+    else if (picVisActY != nullptr) *picVisActY = hpEner[comp];
   }
 
   return savedLumaQP;
@@ -387,9 +388,9 @@ int BitAllocation::applyQPAdaptationLuma (const Slice* slice, const VVEncCfg* en
 
   if (pic == nullptr || pic->cs == nullptr || encCfg == nullptr || ctuStartAddr >= ctuBoundingAddr) return -1;
 
-  const bool isHDR            = encCfg->m_HdrMode != vvencHDRMode::VVENC_HDR_OFF;
+  const bool isHDR            = (encCfg->m_HdrMode != vvencHDRMode::VVENC_HDR_OFF) && !(encCfg->m_lumaReshapeEnable != 0 && encCfg->m_reshapeSignalType == RESHAPE_SIGNAL_PQ);
   const bool isHighResolution = (encCfg->m_PadSourceWidth > 2048 || encCfg->m_PadSourceHeight > 1280);
-  const bool useFrameWiseQPA  = (encCfg->m_QP > MAX_QP_PERCEPT_QPA);
+  const bool useFrameWiseQPA  = (encCfg->m_QP > MAX_QP_PERCEPT_QPA) && (encCfg->m_framesToBeEncoded != 1);
   const int          bitDepth = slice->sps->bitDepths[CH_L];
   const int           sliceQP = (savedQP < 0 ? slice->sliceQp : savedQP);
   const PreCalcValues&    pcv = *pic->cs->pcv;
@@ -471,7 +472,7 @@ int BitAllocation::applyQPAdaptationLuma (const Slice* slice, const VVEncCfg* en
           else /*even addr*/ ctuRCQPMemory->push_back (Clip3 (-8, 7, ctuPumpRedQP[ctuRsAddr]) + 8);
           if (adaptedLumaQP > 0)
           {
-            adaptedLumaQP--; // this is a first-pass tuning to stabilize rate control
+            adaptedLumaQP -= (sliceQP >> 4); // a first-pass tuning for stabilization
           }
         }
         if (ctuPumpRedQP[ctuRsAddr] < 0) adaptedLumaQP = Clip3 (0, MAX_QP, adaptedLumaQP + (ctuPumpRedQP[ctuRsAddr] * encCfg->m_GOPSize - (dvsr >> 1)) / dvsr);
@@ -498,7 +499,7 @@ int BitAllocation::applyQPAdaptationLuma (const Slice* slice, const VVEncCfg* en
         adaptedLumaQP = Clip3 (0, MAX_QP, adaptedLumaQP + lumaDQPOffset (meanLuma, bitDepth));
       }
       // reduce delta-QP variance, avoid wasting precious bit budget at low bit-rates
-      if ((3 + encCfg->m_QP > MAX_QP_PERCEPT_QPA) && (savedQP >= 0))
+      if ((3 + encCfg->m_QP > MAX_QP_PERCEPT_QPA) && (savedQP >= 0) && (encCfg->m_framesToBeEncoded != 1))
       {
         adaptedLumaQP = ((1 + MAX_QP_PERCEPT_QPA - encCfg->m_QP) * adaptedLumaQP + (3 + encCfg->m_QP - MAX_QP_PERCEPT_QPA) * sliceQP + 1) >> 2;
       }
@@ -566,7 +567,7 @@ int BitAllocation::applyQPAdaptationSubCtu (const Slice* slice, const VVEncCfg* 
 
   if (pic == nullptr || encCfg == nullptr) return -1;
 
-  const bool isHDR            = encCfg->m_HdrMode != vvencHDRMode::VVENC_HDR_OFF;
+  const bool isHDR            = (encCfg->m_HdrMode != vvencHDRMode::VVENC_HDR_OFF) && !(encCfg->m_lumaReshapeEnable != 0 && encCfg->m_reshapeSignalType == RESHAPE_SIGNAL_PQ);
   const bool isHighResolution = (encCfg->m_PadSourceWidth > 2048 || encCfg->m_PadSourceHeight > 1280);
   const int         bitDepth  = slice->sps->bitDepths[CH_L];
   const PosType     guardSize = (isHighResolution ? 2 : 1);
@@ -629,7 +630,7 @@ int BitAllocation::getCtuPumpingReducingQP (const Slice* slice, const CPelBuf& o
   return pumpingReducQP;
 }
 
-double BitAllocation::getPicVisualActivity (const Slice* slice, const VVEncCfg* encCfg, const bool lowFrameRate /*= false*/)
+double BitAllocation::getPicVisualActivity (const Slice* slice, const VVEncCfg* encCfg)
 {
   Picture* const pic    = (slice != nullptr ? slice->pic : nullptr);
 
@@ -641,7 +642,7 @@ double BitAllocation::getPicVisualActivity (const Slice* slice, const VVEncCfg* 
   const CPelBuf picPrv2 = pic->getOrigBufPrev (COMP_Y, true );
 
   return filterAndCalculateAverageActivity (picOrig.buf, picOrig.stride, picOrig.height, picOrig.width,
-                                            picPrv1.buf, picPrv1.stride, picPrv2.buf, picPrv2.stride, lowFrameRate ? 24 : encCfg->m_FrameRate,
+                                            picPrv1.buf, picPrv1.stride, picPrv2.buf, picPrv2.stride, encCfg->m_FrameRate,
                                             slice->sps->bitDepths[CH_L], isHighRes);
 }
 

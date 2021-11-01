@@ -101,7 +101,7 @@ void EncLib::initEncoderLib( const VVEncCfg& encCfg )
   m_cBckCfg = encCfg;
 
   // initialize first pass
-  initPass( 0 );
+  initPass( 0, nullptr );
 
 #if ENABLE_TRACING
   g_trace_ctx = tracing_init( m_cEncCfg.m_traceFile, m_cEncCfg.m_traceRule );
@@ -216,9 +216,12 @@ void EncLib::uninitEncoderLib()
 #endif
 }
 
-void EncLib::initPass( int pass )
+void EncLib::initPass( int pass, const char* statsFName )
 {
   CHECK( m_numPassInitialized != pass && m_numPassInitialized + 1 != pass, "initialization of passes only in successive order possible" );
+
+  // set rate control pass
+  m_cRateCtrl.setRCPass( m_cEncCfg, pass, statsFName );
 
   if( m_numPassInitialized + 1 != pass )
   {
@@ -226,9 +229,6 @@ void EncLib::initPass( int pass )
   }
 
   xUninitLib();
-
-  // set rate control pass
-  m_cRateCtrl.setRCPass( pass, m_cEncCfg.m_RCNumPasses - 1 );
 
   // modify encoder config based on rate control pass
   if( m_cEncCfg.m_RCNumPasses > 1 )
@@ -264,16 +264,19 @@ void EncLib::initPass( int pass )
 
   m_pocToGopId.resize( m_cEncCfg.m_GOPSize, -1 );
   m_nextPocOffset.resize( m_cEncCfg.m_GOPSize, 0 );
+  
+  int gopPOCadj = m_cEncCfg.m_DecodingRefreshType == 4 ? 1 : 0;
+  
   for ( int i = 0; i < m_cEncCfg.m_GOPSize; i++ )
   {
-    const int poc = m_cEncCfg.m_GOPList[ i ].m_POC % m_cEncCfg.m_GOPSize;
+    const int poc = (m_cEncCfg.m_GOPList[ i ].m_POC-gopPOCadj) % m_cEncCfg.m_GOPSize;
     CHECK( m_cEncCfg.m_GOPList[ i ].m_POC > m_cEncCfg.m_GOPSize, "error: poc greater than gop size" );
     CHECK( m_pocToGopId[ poc ] != -1, "error: multiple entries in gop list map to same poc modulo gop size" );
     m_pocToGopId[ poc ] = i;
     const int nextGopNum = ( i + 1 ) / m_cEncCfg.m_GOPSize;
     const int nextGopId  = ( i + 1 ) % m_cEncCfg.m_GOPSize;
-    const int nextPoc    = nextGopNum * m_cEncCfg.m_GOPSize + m_cEncCfg.m_GOPList[ nextGopId ].m_POC;
-    m_nextPocOffset[ poc ] = nextPoc - m_cEncCfg.m_GOPList[ i ].m_POC;
+    const int nextPoc    = nextGopNum * m_cEncCfg.m_GOPSize + m_cEncCfg.m_GOPList[ nextGopId ].m_POC-gopPOCadj;
+    m_nextPocOffset[ poc ] = nextPoc - (m_cEncCfg.m_GOPList[ i ].m_POC-gopPOCadj);
   }
   for ( int i = 0; i < m_cEncCfg.m_GOPSize; i++ )
   {
@@ -282,13 +285,12 @@ void EncLib::initPass( int pass )
 
   if ( m_cEncCfg.m_RCTargetBitrate > 0 )
   {
-    m_cRateCtrl.init( m_cEncCfg.m_framesToBeEncoded, m_cEncCfg.m_RCTargetBitrate, (int)( (double)m_cEncCfg.m_FrameRate / m_cEncCfg.m_temporalSubsampleRatio + 0.5 ), m_cEncCfg.m_IntraPeriod, m_cEncCfg.m_GOPSize, m_cEncCfg.m_PadSourceWidth, m_cEncCfg.m_PadSourceHeight,
-      m_cEncCfg.m_CTUSize, m_cEncCfg.m_CTUSize, m_cEncCfg.m_internalBitDepth[ CH_L ], m_cEncCfg.m_GOPList, m_cEncCfg.m_maxParallelFrames );
+    m_cRateCtrl.init( m_cEncCfg );
 
     if ( pass == 1 )
     {
-      m_cRateCtrl.processFirstPassData( pps0.pcv->sizeInCtus );
-      // update first pass data
+      m_cRateCtrl.processFirstPassData (m_cEncCfg.m_QP);
+      // update first-pass data
       m_cRateCtrl.encRCSeq->firstPassData = m_cRateCtrl.getFirstPassStats();
     }
   }
@@ -361,36 +363,35 @@ void EncLib::xSetRCEncCfg( int pass )
   // set encoder config for rate control first pass
   if( ! m_cRateCtrl.rcIsFinalPass )
   {
-#if RC_INTRA_MODEL_OPT
     const double d = (3840.0 * 2160.0) / double (m_cEncCfg.m_SourceWidth * m_cEncCfg.m_SourceHeight);
-#endif
-    // preserve MCTF and IBC settings
+
+    // preserve the CTU size, MCTF and IBC settings
+    const unsigned cs = m_cBckCfg.m_CTUSize;
     const int mctf    = m_cBckCfg.m_vvencMCTF.MCTF;
     const int ibcMode = m_cBckCfg.m_IBCMode;
 
     vvenc_init_preset( &m_cBckCfg, vvencPresetMode::VVENC_FIRSTPASS );
 
-    // use fixQP encoding in first pass
+    // fixed-QP encoding in first rate control pass
     m_cBckCfg.m_RCTargetBitrate = 0;
-#if RC_INTRA_MODEL_OPT
-    m_cBckCfg.m_QP              = std::max (17, MAX_QP_PERCEPT_QPA - 2 - int (0.5 + sqrt ((d * m_cEncCfg.m_RCTargetBitrate) / 500000.0)));
-#else
-    m_cBckCfg.m_QP              = 32;
-#endif
+    m_cBckCfg.m_QP /*base QP*/  = (m_cEncCfg.m_RCInitialQP > 0 ? Clip3 (17, MAX_QP, m_cEncCfg.m_RCInitialQP) : std::max (17, MAX_QP_PERCEPT_QPA - 2 - int (0.5 + sqrt ((d * m_cEncCfg.m_RCTargetBitrate) / 500000.0))));
 
-    // restore MCTF and IBC
+    // restore the settings
+    if (m_cBckCfg.m_usePerceptQPA && (m_cBckCfg.m_QP <= MAX_QP_PERCEPT_QPA || m_cBckCfg.m_framesToBeEncoded == 1))
+    {
+      m_cBckCfg.m_CTUSize       = cs;
+    }
     m_cBckCfg.m_vvencMCTF.MCTF  = mctf;
     m_cBckCfg.m_IBCMode         = ibcMode;
 
     // clear MaxCuDQPSubdiv
-    if( m_cBckCfg.m_CTUSize < 128 )
+    if (m_cBckCfg.m_CTUSize < 128 && (m_cBckCfg.m_PadSourceWidth > 1024 || m_cBckCfg.m_PadSourceHeight > 640))
     {
       m_cBckCfg.m_cuQpDeltaSubdiv = 0;
     }
 
     std::swap( const_cast<VVEncCfg&>(m_cEncCfg), m_cBckCfg );
   }
-#if RC_INTRA_MODEL_OPT
   else // estimate near-optimal base QP for PPS in second RC pass
   {
     const unsigned fps = m_cEncCfg.m_FrameRate;
@@ -406,19 +407,15 @@ void EncLib::xSetRCEncCfg( int pass )
     if ((firstPassData.size() > 0) && (fps > 0))
     {
       double d = (3840.0 * 2160.0) / double (m_cEncCfg.m_SourceWidth * m_cEncCfg.m_SourceHeight);
-      const double qpSizeOffset = (d < 2.0 ? 2.0 /*UHD*/ : 1.0 + log (d) / log (2.0) /*HD, SD*/);
-      const uint64_t frameCount = (uint64_t) firstPassData.size();
-      const int firstPassBaseQP = std::max (17, MAX_QP_PERCEPT_QPA - 2 - int (0.5 + sqrt ((d * m_cEncCfg.m_RCTargetBitrate) / 500000.0)));
+      const int firstPassBaseQP  = std::max (17, MAX_QP_PERCEPT_QPA - 2 - int (0.5 + sqrt ((d * m_cEncCfg.m_RCTargetBitrate) / 500000.0)));
+      const int log2HeightMinus7 = int (0.5 + log ((double) std::max (128, m_cEncCfg.m_SourceHeight)) / log (2.0)) - 7;
 
-      sumFrBits = (sumFrBits + (frameCount >> 1)) / frameCount; // average bits/frame
-      sumVisAct = (sumVisAct + (frameCount >> 1)) / frameCount; // luma vis. activity
-
-      d = ((35.0 + qpSizeOffset - sumVisAct * 0.015625) / 256.0) * firstPassBaseQP * log (m_cEncCfg.m_RCTargetBitrate / double (sumFrBits * fps)) / log (2.0);
-      const_cast<VVEncCfg&>(m_cEncCfg).m_QP = int (0.5 + firstPassBaseQP - d);
-      const_cast<VVEncCfg&>(m_cEncCfg).m_QP = Clip3 (17, firstPassBaseQP + 1, m_cEncCfg.m_QP - std::min (0, (firstPassBaseQP + 3 * (m_cEncCfg.m_QP - firstPassBaseQP) + 2) >> 2));
+      d = (double) m_cEncCfg.m_RCTargetBitrate * (double) firstPassData.size() / double (fps * sumFrBits);
+      d = firstPassBaseQP - (105.0 / 128.0) * sqrt ((double) std::max (1, firstPassBaseQP)) * log (d) / log (2.0);
+      const_cast<VVEncCfg&>(m_cEncCfg).m_QP = int (0.5 + d + 0.125 * log2HeightMinus7 * std::max (0.0, 24.0 + 0.001/*log2HeightMinus7*/ * (log ((double) sumVisAct / firstPassData.size()) / log (2.0) - 0.5 * m_cEncCfg.m_internalBitDepth[CH_L] - 3.0) - d));
+      const_cast<VVEncCfg&>(m_cEncCfg).m_QP = Clip3 (17, MAX_QP, m_cEncCfg.m_QP);
     }
   }
-#endif
 }
 
 // ====================================================================================================================
@@ -474,24 +471,21 @@ void EncLib::encodePicture( bool flush, const vvencYUVBuffer* yuvInBuf, AccessUn
   }
 
   // MCTF process
-#if RC_INTRA_MODEL_OPT
   if (m_cEncCfg.m_usePerceptQPA || (m_cEncCfg.m_RCNumPasses == 2))
-#else
-  if ( m_cEncCfg.m_usePerceptQPA )
-#endif
   {
     m_MCTF.assignQpaBufs( pic );
   }
-  int mctfDelay = 0;
   if ( m_cEncCfg.m_vvencMCTF.MCTF )
   {
-    m_MCTF.filter( pic );
-    mctfDelay = m_MCTF.getCurDelay();
+    do
+    {
+      m_MCTF.filter( pic );
+    } while ( flush && m_MCTF.getCurDelay() > 0 );
   }
 
   // encode picture
   if ( m_numPicsInQueue >= m_cEncCfg.m_InputQueueSize
-      || ( m_numPicsInQueue - mctfDelay > 0 && flush ) )
+      || ( m_numPicsInQueue > 0 && flush ) )
   {
     if ( m_cEncCfg.m_RCTargetBitrate > 0 )
     {
@@ -507,9 +501,10 @@ void EncLib::encodePicture( bool flush, const vvencYUVBuffer* yuvInBuf, AccessUn
     }
 
     // update current poc
-    m_pocEncode = ( m_pocEncode < 0 ) ? 0 : xGetNextPocICO( m_pocEncode, flush, m_numPicsRcvd );
+    m_pocEncode = xGetNextPocICO( m_pocEncode, flush, m_numPicsRcvd, m_cEncCfg.m_DecodingRefreshType == 4 );
+
     std::vector<Picture*> encList;
-    xCreateCodingOrder( m_pocEncode, m_numPicsRcvd, m_numPicsInQueue, flush, encList );
+    xCreateCodingOrder( m_pocEncode, m_numPicsRcvd, m_numPicsInQueue, flush, encList, m_cEncCfg.m_DecodingRefreshType == 4 );
 
     // create cts / dts
     if( !encList.empty() && encList[0]->ctsValid )
@@ -558,11 +553,26 @@ void  EncLib::printSummary()
 // Protected member functions
 // ====================================================================================================================
 
-
-int EncLib::xGetNextPocICO( int poc, bool flush, int max ) const
+int EncLib::xGetFirstEncPOC( int max ) const
 {
+  int poc = m_cEncCfg.m_GOPSize >> 1;
+  
+  while( max < poc )
+  {
+    poc >>= 1;
+  }
+  
+  return poc-1;
+}
+
+int EncLib::xGetNextPocICO( int poc, bool flush, int max, bool altGOP ) const
+{
+  if( poc < 0 )
+  {
+    return altGOP? max < m_cEncCfg.m_GOPSize ? xGetFirstEncPOC( max ) : m_cEncCfg.m_GOPSize-1 : 0;
+  }
   int chk  = 0;
-  int next = ( poc == 0 ) ? m_cEncCfg.m_GOPList[ 0 ].m_POC : poc + m_nextPocOffset[ poc % m_cEncCfg.m_GOPSize ];
+  int next = ( poc == 0 && !altGOP ) ? m_cEncCfg.m_GOPList[ 0 ].m_POC : poc + m_nextPocOffset[ poc % m_cEncCfg.m_GOPSize ];
   if ( flush )
   {
     while( next >= max )
@@ -723,7 +733,7 @@ Picture* EncLib::xGetPictureBuffer( int poc )
   return nullptr;
 }
 
-void EncLib::xCreateCodingOrder( int start, int max, int numInQueue, bool flush, std::vector<Picture*>& encList )
+void EncLib::xCreateCodingOrder( int start, int max, int numInQueue, bool flush, std::vector<Picture*>& encList, bool altGOP )
 {
   encList.clear();
   int poc = start;
@@ -741,7 +751,7 @@ void EncLib::xCreateCodingOrder( int start, int max, int numInQueue, bool flush,
     {
       break;
     }
-    poc = xGetNextPocICO( poc, flush, max );
+    poc = xGetNextPocICO( poc, flush, max, altGOP );
   }
   CHECK( encList.size() == 0, "error: no pictures to be encoded found" );
 }
@@ -876,7 +886,7 @@ void EncLib::xInitConstraintInfo(ConstraintInfo &ci) const
   ci.noProfConstraintFlag                         = ! m_cEncCfg.m_PROF;
   ci.noPaletteConstraintFlag                      = true;
   ci.noActConstraintFlag                          = true;
-  ci.noLmcsConstraintFlag                         = ! m_cEncCfg.m_lumaReshapeEnable;
+  ci.noLmcsConstraintFlag                         = m_cEncCfg.m_lumaReshapeEnable == 0;
   ci.noTrailConstraintFlag                        = m_cEncCfg.m_IntraPeriod == 1;
   ci.noStsaConstraintFlag                         = m_cEncCfg.m_IntraPeriod == 1 || !hasNonZeroTemporalId;
   ci.noRaslConstraintFlag                         = m_cEncCfg.m_IntraPeriod == 1 || !hasLeadingPictures;
@@ -884,7 +894,7 @@ void EncLib::xInitConstraintInfo(ConstraintInfo &ci) const
   ci.noIdrConstraintFlag                          = false;
   ci.noCraConstraintFlag                          = m_cEncCfg.m_DecodingRefreshType != 1;
   ci.noGdrConstraintFlag                          = false;
-  ci.noApsConstraintFlag                          = ( !m_cEncCfg.m_alf && !m_cEncCfg.m_lumaReshapeEnable /*&& m_useScalingListId == SCALING_LIST_OFF*/);
+  ci.noApsConstraintFlag                          = ( !m_cEncCfg.m_alf && m_cEncCfg.m_lumaReshapeEnable == 0 /*&& m_useScalingListId == SCALING_LIST_OFF*/);
 }
 
 void EncLib::xInitSPS(SPS &sps) const
@@ -922,7 +932,7 @@ void EncLib::xInitSPS(SPS &sps) const
   sps.maxNumIBCMergeCand            = 6;
 
   sps.idrRefParamList               = m_cEncCfg.m_idrRefParamList;
-  sps.dualITree                     = m_cEncCfg.m_dualITree;
+  sps.dualITree                     = m_cEncCfg.m_dualITree && m_cEncCfg.m_internChromaFormat != VVENC_CHROMA_400;
   sps.MTS                           = m_cEncCfg.m_MTS || m_cEncCfg.m_MTSImplicit;
   sps.SMVD                          = m_cEncCfg.m_SMVD;
   sps.AMVR                          = m_cEncCfg.m_AMVRspeed != IMV_OFF;
@@ -931,7 +941,7 @@ void EncLib::xInitSPS(SPS &sps) const
   sps.verCollocatedChroma           = m_cEncCfg.m_verCollocatedChromaFlag;
   sps.BDOF                          = m_cEncCfg.m_BDOF;
   sps.DMVR                          = m_cEncCfg.m_DMVR;
-  sps.lumaReshapeEnable             = m_cEncCfg.m_lumaReshapeEnable;
+  sps.lumaReshapeEnable             = m_cEncCfg.m_lumaReshapeEnable != 0;
   sps.Affine                        = m_cEncCfg.m_Affine;
   sps.PROF                          = m_cEncCfg.m_PROF;
   sps.ProfPresent                   = m_cEncCfg.m_PROF;
@@ -959,16 +969,17 @@ void EncLib::xInitSPS(SPS &sps) const
   sps.transformSkip                 = m_cEncCfg.m_TS != 0;
   sps.log2MaxTransformSkipBlockSize = m_cEncCfg.m_TSsize;
   sps.BDPCM                         = m_cEncCfg.m_useBDPCM != 0;
+  sps.BCW                           = m_cEncCfg.m_BCW;
 
   for (uint32_t chType = 0; chType < MAX_NUM_CH; chType++)
   {
     sps.bitDepths.recon[chType]     = m_cEncCfg.m_internalBitDepth[chType];
     sps.qpBDOffset[chType]          = 6 * (m_cEncCfg.m_internalBitDepth[chType] - 8);
-    sps.internalMinusInputBitDepth[chType] = (m_cEncCfg.m_internalBitDepth[chType] - m_cEncCfg.m_inputBitDepth[chType]);
+    sps.internalMinusInputBitDepth[chType] = std::max(0, (m_cEncCfg.m_internalBitDepth[chType] - m_cEncCfg.m_inputBitDepth[chType]));
   }
 
   sps.alfEnabled                    = m_cEncCfg.m_alf;
-  sps.ccalfEnabled                  = m_cEncCfg.m_ccalf;
+  sps.ccalfEnabled                  = m_cEncCfg.m_ccalf && m_cEncCfg.m_internChromaFormat != VVENC_CHROMA_400;
 
   sps.saoEnabled                    = m_cEncCfg.m_bUseSAO;
   sps.jointCbCr                     = m_cEncCfg.m_JointCbCrMode;
@@ -1024,7 +1035,7 @@ void EncLib::xInitPPS(PPS &pps, const SPS &sps) const
 {
   bool bUseDQP = m_cEncCfg.m_cuQpDeltaSubdiv > 0;
   bUseDQP |= m_cEncCfg.m_lumaLevelToDeltaQPEnabled;
-  bUseDQP |= m_cEncCfg.m_usePerceptQPA && (m_cEncCfg.m_QP <= MAX_QP_PERCEPT_QPA);
+  bUseDQP |= m_cEncCfg.m_usePerceptQPA && (m_cEncCfg.m_QP <= MAX_QP_PERCEPT_QPA || m_cEncCfg.m_framesToBeEncoded == 1);
 
   if (m_cEncCfg.m_costMode==VVENC_COST_SEQUENCE_LEVEL_LOSSLESS || m_cEncCfg.m_costMode==VVENC_COST_LOSSLESS_CODING)
   {
@@ -1316,10 +1327,19 @@ void EncLib::xInitHrdParameters(SPS &sps)
 
 void EncLib::xDetectScreenC(Picture& pic, PelUnitBuf yuvOrgBuf)
 {
-  bool useScMCTF = false;
-  bool useScTools = false;
+  bool isSccWeak = false;
+  bool isSccStrg = false;
 
-  if (m_cEncCfg.m_TS == 2 || m_cEncCfg.m_useBDPCM == 2 || m_cEncCfg.m_vvencMCTF.MCTF == 2 || m_cEncCfg.m_IBCMode==2)
+  if( m_cEncCfg.m_TS                   == 2
+      || m_cEncCfg.m_useBDPCM          == 2
+      || m_cEncCfg.m_vvencMCTF.MCTF    == 2
+      || m_cEncCfg.m_IBCMode           == 2
+      || m_cEncCfg.m_lumaReshapeEnable == 2
+      || m_cEncCfg.m_motionEstimationSearchMethodSCC > 0 
+#if QTBTT_SPEED3
+      || m_cEncCfg.m_qtbttSpeedUpMode & 2
+#endif
+    )
   {
     int SIZE_BL = 4;
     int K_SC = 25;
@@ -1332,9 +1352,9 @@ void EncLib::xDetectScreenC(Picture& pic, PelUnitBuf yuvOrgBuf)
     int SizeS = SIZE_BL << 1;
     int sR[4] = { 0,0,0,0 };
     int AmountBlock = (uiWidth >> 2) * (uiHeight >> 2);
-    for (hh = 0; hh < uiHeight;)
+    for (hh = 0; hh < uiHeight; hh += SizeS)
     {
-      for (ww = 0; ww < uiWidth;)
+      for (ww = 0; ww < uiWidth; ww += SizeS)
       {
         int Rx = ww > (uiWidth >> 1) ? 1 : 0;
         int Ry = hh > (uiHeight >> 1) ? 1 : 0;
@@ -1344,9 +1364,9 @@ void EncLib::xDetectScreenC(Picture& pic, PelUnitBuf yuvOrgBuf)
         int j = hh;
         int n = 0;
         int Var[4];
-        for (j = hh; (j < hh + SizeS) && (j < uiHeight); j++)
+        for (j = hh; (j < hh + SizeS) && (j < uiHeight); j += size)
         {
-          for (i = ww; (i < ww + SizeS) && (i < uiWidth); i++)
+          for (i = ww; (i < ww + SizeS) && (i < uiWidth); i += size)
           {
             int sum = 0;
             int Mit = 0;
@@ -1373,9 +1393,7 @@ void EncLib::xDetectScreenC(Picture& pic, PelUnitBuf yuvOrgBuf)
             V = V / sizeEnd;
             Var[n] = V;
             n++;
-            i += size;
           }
-          j += size;
         }
         for (int i = 0; i < 2; i++)
         {
@@ -1388,27 +1406,34 @@ void EncLib::xDetectScreenC(Picture& pic, PelUnitBuf yuvOrgBuf)
             sR[Ry] += 1;
           }
         }
-        ww += SizeS;
       }
-      hh += SizeS;
     }
     int s = 0;
-    useScMCTF = false; // for SCC no MCTF
+    isSccStrg = true;
     for (int r = 0; r < 4; r++)
     {
       s += sR[r];
       if (((sR[r] * 100 / (AmountBlock >> 2)) <= K_SC))
       {
-        useScMCTF = true; //NC
+        isSccStrg = false;
       }
     }
-    useScTools = ((s * 100 / AmountBlock) > K_SC);
+    isSccWeak = ((s * 100 / AmountBlock) > K_SC);
   }
-  pic.useScTS    = m_cEncCfg.m_TS == 1       || (m_cEncCfg.m_TS == 2 && useScTools);
-  pic.useScBDPCM = m_cEncCfg.m_useBDPCM == 1 || (m_cEncCfg.m_useBDPCM == 2 && useScTools);
-  pic.useScMCTF  = m_cEncCfg.m_vvencMCTF.MCTF == 1 || (m_cEncCfg.m_vvencMCTF.MCTF == 2 && useScMCTF);
 
-  pic.useScIBC   = m_cEncCfg.m_IBCMode == 1 || (m_cEncCfg.m_IBCMode == 2 && !useScMCTF);
+  pic.useScME    = m_cEncCfg.m_motionEstimationSearchMethodSCC > 0                            && isSccStrg;
+  pic.useScTS    = m_cEncCfg.m_TS == 1                || ( m_cEncCfg.m_TS == 2                && isSccWeak );
+  pic.useScBDPCM = m_cEncCfg.m_useBDPCM == 1          || ( m_cEncCfg.m_useBDPCM == 2          && isSccWeak );
+  pic.useScMCTF  = m_cEncCfg.m_vvencMCTF.MCTF == 1    || ( m_cEncCfg.m_vvencMCTF.MCTF == 2    && ! isSccStrg );
+  pic.useScLMCS  = m_cEncCfg.m_lumaReshapeEnable == 1 || ( m_cEncCfg.m_lumaReshapeEnable == 2 && ! isSccStrg );
+  pic.useScIBC   = m_cEncCfg.m_IBCMode == 1           || ( m_cEncCfg.m_IBCMode == 2           && isSccStrg );
+#if QTBTT_SPEED3
+  pic.useQtbttSpeedUpMode = m_cEncCfg.m_qtbttSpeedUpMode;
+  if ((m_cEncCfg.m_qtbttSpeedUpMode & 2) && isSccStrg)
+  {
+    pic.useQtbttSpeedUpMode &= ~1;
+  }
+#endif
 
 }
 

@@ -361,7 +361,7 @@ void HLSWriter::codePPS( const PPS* pcPPS, const SPS* pcSPS )
       }
     }
   }
-  WRITE_FLAG( pcPPS->deblockingFilterControlPresent,    "debpps_locking_filter_control_present_flag");
+  WRITE_FLAG( pcPPS->deblockingFilterControlPresent,    "pps_deblocking_filter_control_present_flag");
   if(pcPPS->deblockingFilterControlPresent)
   {
     WRITE_FLAG( pcPPS->deblockingFilterOverrideEnabled, "pps_deblocking_filter_override_enabled_flag" );
@@ -1650,22 +1650,22 @@ void HLSWriter::codePictureHeader( const PicHeader* picHeader, bool writeRbspTra
       if (pps->dbfInfoInPh)
       {
         WRITE_FLAG ( picHeader->deblockingFilterOverride, "ph_deblocking_filter_override_flag" );
-      }
-    }
-
-    if(picHeader->deblockingFilterOverride)
-    {
-      WRITE_FLAG( picHeader->deblockingFilterDisable, "ph_deblocking_filter_disabled_flag" );
-      if( !picHeader->deblockingFilterDisable )
-      {
-        WRITE_SVLC( picHeader->deblockingFilterBetaOffsetDiv2[COMP_Y], "ph_beta_offset_div2" );
-        WRITE_SVLC( picHeader->deblockingFilterTcOffsetDiv2[COMP_Y], "ph_tc_offset_div2" );
-        if( pps->usePPSChromaTool )
+ 
+        if(picHeader->deblockingFilterOverride)
         {
-          WRITE_SVLC( picHeader->deblockingFilterBetaOffsetDiv2[COMP_Cb], "ph_cb_beta_offset_div2" );
-          WRITE_SVLC( picHeader->deblockingFilterTcOffsetDiv2[COMP_Cb], "ph_cb_tc_offset_div2" );
-          WRITE_SVLC( picHeader->deblockingFilterBetaOffsetDiv2[COMP_Cr], "ph_cr_beta_offset_div2" );
-          WRITE_SVLC( picHeader->deblockingFilterTcOffsetDiv2[COMP_Cr], "ph_cr_tc_offset_div2" );
+          WRITE_FLAG( picHeader->deblockingFilterDisable, "ph_deblocking_filter_disabled_flag" );
+          if( !picHeader->deblockingFilterDisable )
+          {
+            WRITE_SVLC( picHeader->deblockingFilterBetaOffsetDiv2[COMP_Y], "ph_beta_offset_div2" );
+            WRITE_SVLC( picHeader->deblockingFilterTcOffsetDiv2[COMP_Y], "ph_tc_offset_div2" );
+            if( pps->usePPSChromaTool )
+            {
+              WRITE_SVLC( picHeader->deblockingFilterBetaOffsetDiv2[COMP_Cb], "ph_cb_beta_offset_div2" );
+              WRITE_SVLC( picHeader->deblockingFilterTcOffsetDiv2[COMP_Cb], "ph_cb_tc_offset_div2" );
+              WRITE_SVLC( picHeader->deblockingFilterBetaOffsetDiv2[COMP_Cr], "ph_cr_beta_offset_div2" );
+              WRITE_SVLC( picHeader->deblockingFilterTcOffsetDiv2[COMP_Cr], "ph_cr_tc_offset_div2" );
+            }
+          }
         }
       }
     }

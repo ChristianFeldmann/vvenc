@@ -66,6 +66,11 @@ THE POSSIBILITY OF SUCH DAMAGE.
 #include "CommonLib/TrQuant_EMT.h"
 #endif
 
+#if defined( __linux__ )
+#include <malloc.h>
+#endif
+
+
 #if _DEBUG
 #define HANDLE_EXCEPTION 0
 #else
@@ -157,6 +162,7 @@ int VVEncImpl::init( const vvenc_config& config )
 #if HANDLE_EXCEPTION
   catch( std::exception& e )
   {
+    msg( VVENC_ERROR, "\n%s\n", e.what() );
     m_cErrorString = e.what();
     return VVENC_ERR_UNSPECIFIED;
   }
@@ -167,7 +173,7 @@ int VVEncImpl::init( const vvenc_config& config )
   return VVENC_OK;
 }
 
-int VVEncImpl::initPass( int pass )
+int VVEncImpl::initPass( int pass, const char* statsFName )
 {
   if( !m_bInitialized ){ return VVENC_ERR_INITIALIZE; }
   if( pass > 1 )
@@ -178,25 +184,18 @@ int VVEncImpl::initPass( int pass )
     return VVENC_ERR_NOT_SUPPORTED;
   }
 
-  if( pass > 1 && m_eState != INTERNAL_STATE_FINALIZED )
-  {
-    std::stringstream css;
-    css << "initPass(" << pass << ") cannot initPass " << pass << " without having flushed the last pass. flush encoder till all frames are processed";
-    m_cErrorString = css.str();
-    return VVENC_ERR_INITIALIZE;
-  }
-
   if ( m_pEncLib )
   {
 #if HANDLE_EXCEPTION
     try
 #endif
     {
-      m_pEncLib->initPass( pass );
+      m_pEncLib->initPass( pass, statsFName );
     }
 #if HANDLE_EXCEPTION
     catch( std::exception& e )
     {
+      msg( VVENC_ERROR, "\n%s\n", e.what() );
       m_cErrorString = e.what();
       return VVENC_ERR_UNSPECIFIED;
     }
@@ -224,11 +223,16 @@ int VVEncImpl::uninit()
 #if HANDLE_EXCEPTION
     catch( std::exception& e )
     {
+      msg( VVENC_ERROR, "\n%s\n", e.what() );
       m_cErrorString = e.what();
       return VVENC_ERR_UNSPECIFIED;
     }
 #endif
   }
+
+#if defined( __linux__ )
+  malloc_trim(0);   // free unused heap memory
+#endif
 
   m_bInitialized = false;
   m_eState       = INTERNAL_STATE_UNINITIALIZED;
@@ -362,6 +366,7 @@ int VVEncImpl::encode( vvencYUVBuffer* pcYUVBuffer, vvencAccessUnit* pcAccessUni
 #if HANDLE_EXCEPTION
   catch( std::exception& e )
   {
+    msg( VVENC_ERROR, "\n%s\n", e.what() );
     m_cErrorString = e.what();
     return VVENC_ERR_UNSPECIFIED;
   }
@@ -393,6 +398,10 @@ int VVEncImpl::encode( vvencYUVBuffer* pcYUVBuffer, vvencAccessUnit* pcAccessUni
 
     iRet = xCopyAu( *pcAccessUnit, cAu  );
   }
+
+#if defined( __linux__ )
+  malloc_trim(0);   // free unused heap memory
+#endif
 
   return iRet;
 }
@@ -669,14 +678,14 @@ const char* VVEncImpl::getCompileInfoString()
 }
 
 ///< decode bitstream with limited build in decoder
-int VVEncImpl::decodeBitstream( const char* FileName)
+int VVEncImpl::decodeBitstream( const char* FileName, const char* trcFile, const char* trcRule)
 {
   int ret = 0;
   FFwdDecoder ffwdDecoder;
   Picture cPicture; cPicture.poc=-8000;
 
 #if ENABLE_TRACING
-  g_trace_ctx = tracing_init( "", "" );
+  g_trace_ctx = tracing_init( trcFile, trcRule );
 #endif
 
   std::string filename(FileName );
@@ -685,12 +694,12 @@ int VVEncImpl::decodeBitstream( const char* FileName)
 #endif
   {
     ret = tryDecodePicture( &cPicture, -1, filename, ffwdDecoder, nullptr, false, cPicture.poc, false );
-    if( ret )  { msg( VVENC_ERROR, "decoding failed"); }
+    if( ret )  { msg( VVENC_ERROR, "decoding failed\n"); }
   }
 #if HANDLE_EXCEPTION
   catch( std::exception& e )
   {
-    msg( VVENC_ERROR, "decoding failed %s", e.what() );
+    msg( VVENC_ERROR, "decoding failed: %s\n", e.what() );
     return VVENC_ERR_UNSPECIFIED;
   }
 #endif

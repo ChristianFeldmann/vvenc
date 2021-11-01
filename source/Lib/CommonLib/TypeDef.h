@@ -73,6 +73,8 @@ typedef vvencSliceType    SliceType;
 
 namespace vvenc {
 
+#define QTBTT_SPEED3                                      1
+
 #define JVET_M0497_MATRIX_MULT                            1 // 0: Fast method; 1: Matrix multiplication
 
 #define FIX_FOR_TEMPORARY_COMPILER_ISSUES_ENABLED         1 // Some compilers fail on particular code fragments, remove this when the compiler is fixed (or new version is used)
@@ -113,14 +115,14 @@ namespace vvenc {
 #define ENABLE_CU_MODE_COUNTERS                           0
 #endif
 
+#define ENABLE_MEASURE_SEARCH_SPACE                       0
+
 // ====================================================================================================================
 // Debugging
 // ====================================================================================================================
 
 #define INTRA_FULL_SEARCH                                 0 ///< enables full mode search for intra estimation
 #define INTER_FULL_SEARCH                                 0 ///< enables full mode search for intra estimation
-
-#define RC_INTRA_MODEL_OPT                                1 ///< enables new model to derive QP/lambda from target bits
 
 // This can be enabled by the makefile
 #ifndef RExt__HIGH_BIT_DEPTH_SUPPORT
@@ -189,10 +191,11 @@ typedef       int64_t           Intermediate_Int;  ///< used as intermediate val
 typedef       uint64_t          Intermediate_UInt; ///< used as intermediate value in calculations
 #else
 typedef       int16_t           Pel;               ///< pixel type
-typedef       int               TCoeff;            ///< transform coefficient
+typedef       int32_t           TCoeff;            ///< transform coefficient
+typedef       int16_t           TCoeffSig;         ///< transform coefficient as signalled
 typedef       int16_t           TMatrixCoeff;      ///< transform matrix coefficient
 typedef       int16_t           TFilterCoeff;      ///< filter coefficient
-typedef       int               Intermediate_Int;  ///< used as intermediate value in calculations
+typedef       int32_t           Intermediate_Int;  ///< used as intermediate value in calculations
 typedef       uint32_t          Intermediate_UInt; ///< used as intermediate value in calculations
 #endif
 
@@ -662,10 +665,8 @@ private:
 };
 
 // if a check fails with THROW or CHECK, please check if ported correctly from assert in revision 1196)
-#define THROW(x)            throw( Exception( "\nERROR: In function \"" ) << __FUNCTION__ << "\" in " << __FILE__ << ":" << __LINE__ << ": " << x )
+#define THROW(x)            throw( Exception( "ERROR: In function \"" ) << __FUNCTION__ << "\" in " << __FILE__ << ":" << __LINE__ << ": " << x )
 #define CHECK(c,x)          if(c){ THROW(x); }
-#define EXIT(x)             throw( Exception( "\n" ) << x << "\n" )
-#define CHECK_NULLPTR(_ptr) CHECK( !( _ptr ), "Accessing an empty pointer pointer!" )
 
 #if !NDEBUG  // for non MSVC compiler, define _DEBUG if in debug mode to have same behavior between MSVC and others in debug
 #ifndef _DEBUG
