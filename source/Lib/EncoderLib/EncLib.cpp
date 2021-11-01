@@ -90,7 +90,7 @@ void EncLib::xResetLib()
   m_pocEncode          = -1;
   m_pocRecOut          = 0;
   m_GOPSizeLog2        = -1;
-  m_TicksPerFrameMul4  = 0;
+  m_TicksPerFrame      = 0;
   m_numPassInitialized = -1;
 }
 
@@ -308,7 +308,7 @@ void EncLib::initPass( int pass )
     case 59: iTempRate = 60000; iTempScale = 1001; break;
     default: break;
     }
-    m_TicksPerFrameMul4 = (int)((int64_t)4 *(int64_t)m_cEncCfg.m_TicksPerSecond * (int64_t)iTempScale/(int64_t)iTempRate);
+    m_TicksPerFrame = (int)((int64_t)m_cEncCfg.m_TicksPerSecond * (int64_t)iTempScale/(int64_t)iTempRate);
   }
 
   m_numPassInitialized = pass;
@@ -514,18 +514,12 @@ void EncLib::encodePicture( bool flush, const vvencYUVBuffer* yuvInBuf, AccessUn
     // create cts / dts
     if( !encList.empty() && encList[0]->ctsValid )
     {
-      int64_t iDiffFrames = 0;
-      int iNext = 0;
-      if( !encList.empty() )
-      {
-        iNext = encList[0]->poc;
-        iDiffFrames = ( m_numPicsCoded - iNext );
-      }
-
-      au.cts     = encList[0]->cts;
+      au.cts      = encList[0]->cts * m_TicksPerFrame;
       au.ctsValid = encList[0]->ctsValid;
 
-      au.dts     = ((iDiffFrames - m_GOPSizeLog2) * m_TicksPerFrameMul4)/4 + au.cts;
+      // Maybe we should subtract the maximum decoding/display delay here.
+      // Not sure how to get it / if this is a requirement.
+      au.dts      = m_numPicsCoded * m_TicksPerFrame;
       au.dtsValid = true;
     }
 
