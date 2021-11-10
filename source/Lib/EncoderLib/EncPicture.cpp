@@ -65,8 +65,6 @@ namespace vvenc {
 #ifdef TRACE_ENABLE_ITT
 static __itt_string_handle* itt_handle_start = __itt_string_handle_create( "PicEnc" );
 static __itt_domain* itt_domain_picEncoder   = __itt_domain_create( "PictureEncoder" );
-static __itt_string_handle* itt_handle_post  = __itt_string_handle_create( "ALF_post" );
-static __itt_domain* itt_domain_ALF_post     = __itt_domain_create( "ALFPost" );
 #endif
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -99,7 +97,7 @@ void EncPicture::compressPicture( Picture& pic, EncGOP& gopEncoder )
   pic.cs->createTempBuffers( true );
   pic.cs->initStructData( MAX_INT, false, nullptr, true );
 
-  if( m_pcEncCfg->m_lumaReshapeEnable && m_pcEncCfg->m_reshapeSignalType == RESHAPE_SIGNAL_PQ && m_pcEncCfg->m_alf )
+  if( pic.useScLMCS && m_pcEncCfg->m_reshapeSignalType == RESHAPE_SIGNAL_PQ && m_pcEncCfg->m_alf )
   {
     const double *weights = gopEncoder.getReshaper().getlumaLevelToWeightPLUT();
     auto& vec = m_ALF.getLumaLevelWeightTable();
@@ -110,13 +108,17 @@ void EncPicture::compressPicture( Picture& pic, EncGOP& gopEncoder )
 
     m_ALF.setAlfWSSD( 1 );
   }
+  else
+  {
+    m_ALF.setAlfWSSD( 0 );
+  }
 
   // compress picture
   xInitPicEncoder ( pic );
   if( m_pcEncCfg->m_RCTargetBitrate > 0 )
   {
     pic.encRCPic = new EncRCPic;
-    pic.encRCPic->create( m_pcRateCtrl->encRCSeq, m_pcRateCtrl->encRCGOP, pic.slices[0]->isIRAP() ? 0 : m_pcRateCtrl->encRCSeq->gopID2Level[pic.gopId], pic.slices[0]->poc, pic.rcIdxInGop, m_pcRateCtrl->m_listRCPictures );
+    pic.encRCPic->create( m_pcRateCtrl->encRCSeq, m_pcRateCtrl->encRCGOP, (pic.slices[0]->isIntra() ? 0 : pic.slices[0]->TLayer + 1), pic.slices[0]->poc, pic.rcIdxInGop, m_pcRateCtrl->m_listRCPictures );
     gopEncoder.picInitRateControl( pic.gopId, pic, pic.slices[0], this );
   }
 
@@ -139,13 +141,6 @@ void EncPicture::finalizePicture( Picture& pic )
     ss << "ALF_post_" << slice->poc;
     __itt_string_handle* itt_handle_post = __itt_string_handle_create( ss.str().c_str() );
 #endif
-    ITT_TASKSTART( itt_domain_ALF_post, itt_handle_post );
-
-    if( m_pcEncCfg->m_ccalf )
-    {
-      m_ALF.performCCALF( pic, cs );
-    }
-    ITT_TASKEND( itt_domain_ALF_post, itt_handle_post );
     pic.picApsMap.setApsIdStart( m_ALF.getApsIdStart() );
 
     cs.slice->ccAlfFilterParam      = m_ALF.getCcAlfFilterParam();

@@ -186,6 +186,43 @@ void calcBDOFSumsCore(const Pel* srcY0Tmp, const Pel* srcY1Tmp, Pel* gradX0, Pel
   }
 }
 
+
+template<int padSize>
+void paddingCore(Pel *ptr, int stride, int width, int height)
+{
+  /*left and right padding*/
+  Pel *ptrTemp1 = ptr;
+  Pel *ptrTemp2 = ptr + (width - 1);
+  ptrdiff_t offset = 0;
+  for (int i = 0; i < height; i++)
+  {
+    offset = stride * i;
+    for (int j = 1; j <= padSize; j++)
+    {
+      *(ptrTemp1 - j + offset) = *(ptrTemp1 + offset);
+      *(ptrTemp2 + j + offset) = *(ptrTemp2 + offset);
+    }
+  }
+  /*Top and Bottom padding*/
+  int numBytes = (width + padSize + padSize) * sizeof(Pel);
+  ptrTemp1 = (ptr - padSize);
+  ptrTemp2 = (ptr + (stride * (height - 1)) - padSize);
+  for (int i = 1; i <= padSize; i++)
+  {
+    memcpy(ptrTemp1 - (i * stride), (ptrTemp1), numBytes);
+    memcpy(ptrTemp2 + (i * stride), (ptrTemp2), numBytes);
+  }
+}
+
+void padDmvrCore( const Pel* src, const int srcStride, Pel* dst, const int dstStride, int width, int height, int padSize )
+{
+  g_pelBufOP.copyBuffer( ( const char* ) src, srcStride * sizeof( Pel ), ( char* ) dst, dstStride * sizeof( Pel ), width * sizeof( Pel ), height );
+  if( padSize == 1 )
+    paddingCore<1>( dst, dstStride, width, height );
+  else
+    paddingCore<2>( dst, dstStride, width, height );
+}
+
 // ====================================================================================================================
 // Constructor / destructor / initialize
 // ====================================================================================================================
@@ -274,8 +311,8 @@ bool InterPrediction::xCheckIdenticalMotion( const CodingUnit& cu ) const
         }
         else
         {
-          if ( (cu.affineType == AFFINEMODEL_4PARAM && (cu.mvAffi[0][0] == cu.mvAffi[1][0]) && (cu.mvAffi[0][1] == cu.mvAffi[1][1]))
-            || (cu.affineType == AFFINEMODEL_6PARAM && (cu.mvAffi[0][0] == cu.mvAffi[1][0]) && (cu.mvAffi[0][1] == cu.mvAffi[1][1]) && (cu.mvAffi[0][2] == cu.mvAffi[1][2])) )
+          if ( (cu.affineType == AFFINEMODEL_4PARAM && (cu.mv[0][0] == cu.mv[1][0]) && (cu.mv[0][1] == cu.mv[1][1]))
+            || (cu.affineType == AFFINEMODEL_6PARAM && (cu.mv[0][0] == cu.mv[1][0]) && (cu.mv[0][1] == cu.mv[1][1]) && (cu.mv[0][2] == cu.mv[1][2])) )
           {
             return true;
           }
@@ -335,13 +372,13 @@ void InterPrediction::xPredInterUni(const CodingUnit& cu, const RefPicList& refP
   {
     CHECK(iRefIdx < 0, "iRefIdx incorrect.");
 
-    mv[0] = cu.mvAffi[refPicList][0];
-    mv[1] = cu.mvAffi[refPicList][1];
-    mv[2] = cu.mvAffi[refPicList][2];
+    mv[0] = cu.mv[refPicList][0];
+    mv[1] = cu.mv[refPicList][1];
+    mv[2] = cu.mv[refPicList][2];
   }
   else
   {
-    mv[0] = cu.mv[refPicList];
+    mv[0] = cu.mv[refPicList][0];
     if (!isIBC )
       clipMv(mv[0], cu.lumaPos(), cu.lumaSize(), *cu.cs->pcv);
   }
@@ -373,7 +410,7 @@ void InterPrediction::xPredInterUni(const CodingUnit& cu, const RefPicList& refP
   }
 }
 
-void InterPrediction::xPredInterBi( const CodingUnit& cu, PelUnitBuf& yuvPred, const bool bdofApplied )
+void InterPrediction::xPredInterBi( const CodingUnit& cu, PelUnitBuf& yuvPred, const bool bdofApplied, PelUnitBuf *yuvPredTmp )
 {
   CHECK( !cu.affine && cu.refIdx[0] >= 0 && cu.refIdx[1] >= 0 && ( cu.lwidth() + cu.lheight() == 12 ), "invalid 4x8/8x4 bi-predicted blocks" );
 
@@ -403,7 +440,7 @@ void InterPrediction::xPredInterBi( const CodingUnit& cu, PelUnitBuf& yuvPred, c
     }
   }
 
-  xWeightedAverage( cu, puBuf[0], puBuf[1], yuvPred, bdofApplied );
+  xWeightedAverage( cu, puBuf[0], puBuf[1], yuvPred, bdofApplied, yuvPredTmp );
 }
 
 void InterPrediction::motionCompensationIBC( CodingUnit& cu, PelUnitBuf& predBuf )
@@ -428,7 +465,7 @@ void InterPrediction::motionCompensationIBC( CodingUnit& cu, PelUnitBuf& predBuf
   xPredInterUni(cu, REF_PIC_LIST_0, predBuf, false, false );
 }
 
-bool InterPrediction::motionCompensation( CodingUnit& cu, PelUnitBuf& predBuf, const RefPicList refPicList)
+bool InterPrediction::motionCompensation( CodingUnit& cu, PelUnitBuf& predBuf, const RefPicList refPicList, PelUnitBuf* predBufDfltWght )
 {
   bool ret = false;
   if( refPicList != REF_PIC_LIST_X )
@@ -474,6 +511,10 @@ bool InterPrediction::motionCompensation( CodingUnit& cu, PelUnitBuf& predBuf, c
     else if( xCheckIdenticalMotion( cu ) )
     {
       xPredInterUni( cu, REF_PIC_LIST_0, predBuf, false, false );
+      if( predBufDfltWght )
+      {
+        predBufDfltWght->copyFrom( predBuf );
+      }
     }
     else if (dmvrApplied)
     {
@@ -481,16 +522,19 @@ bool InterPrediction::motionCompensation( CodingUnit& cu, PelUnitBuf& predBuf, c
     }
     else
     {
-      xPredInterBi( cu, predBuf, bdofApplied );
+      xPredInterBi( cu, predBuf, bdofApplied, predBufDfltWght );
     }
     DTRACE( g_trace_ctx, D_MOT_COMP, "BIDOF=%d, DMVR=%d\n", bdofApplied, dmvrApplied );
     ret = bdofApplied || dmvrApplied;
   }
-  DTRACE( g_trace_ctx, D_MOT_COMP, "MV=%d,%d\n", cu.mv[0].hor, cu.mv[0].ver );
-  DTRACE( g_trace_ctx, D_MOT_COMP, "MV=%d,%d\n", cu.mv[1].hor, cu.mv[1].ver );
+  DTRACE( g_trace_ctx, D_MOT_COMP, "MV=%d,%d\n", cu.mv[0][0].hor, cu.mv[0][0].ver );
+  DTRACE( g_trace_ctx, D_MOT_COMP, "MV=%d,%d\n", cu.mv[1][0].hor, cu.mv[1][0].ver );
   DTRACE_PEL_BUF( D_MOT_COMP, predBuf.Y(), cu, cu.predMode, COMP_Y );
-  DTRACE_PEL_BUF( D_MOT_COMP, predBuf.Cb(), cu, cu.predMode, COMP_Cb );
-  DTRACE_PEL_BUF( D_MOT_COMP, predBuf.Cr(), cu, cu.predMode, COMP_Cr );
+  if( cu.chromaFormat != VVENC_CHROMA_400 )
+  {
+    DTRACE_PEL_BUF( D_MOT_COMP, predBuf.Cb(), cu, cu.predMode, COMP_Cb );
+    DTRACE_PEL_BUF( D_MOT_COMP, predBuf.Cr(), cu, cu.predMode, COMP_Cr );
+  }
   return ret;
 }
 
@@ -648,6 +692,7 @@ void InterPredInterpolation::init()
   xFpBDOFGradFilter = gradFilterCore;
   xFpProfGradFilter = gradFilterCore<false>;
   xFpApplyPROF      = applyPROFCore;
+  xFpPadDmvr        = padDmvrCore;
 
 #if ENABLE_SIMD_OPT_BDOF && defined( TARGET_SIMD_X86 )
   initInterPredictionX86();
@@ -924,7 +969,7 @@ void InterPredInterpolation::xApplyBDOF( PelBuf& yuvDst, const ClpRng& clpRng )
   }  // yu
 }
 
-void InterPredInterpolation::xWeightedAverage( const CodingUnit& cu, const CPelUnitBuf& pcYuvSrc0, const CPelUnitBuf& pcYuvSrc1, PelUnitBuf& pcYuvDst, const bool bdofApplied )
+void InterPredInterpolation::xWeightedAverage( const CodingUnit& cu, const CPelUnitBuf& pcYuvSrc0, const CPelUnitBuf& pcYuvSrc1, PelUnitBuf& pcYuvDst, const bool bdofApplied, PelUnitBuf *yuvPredTmp )
 {
   const bool lumaOnly = (cu.mcControl >> 1) == 1;
   const bool chromaOnly = cu.mcControl > 3;
@@ -936,6 +981,17 @@ void InterPredInterpolation::xWeightedAverage( const CodingUnit& cu, const CPelU
 
   if( iRefIdx0 >= 0 && iRefIdx1 >= 0 )
   {
+    if( cu.BcwIdx != BCW_DEFAULT && ( yuvPredTmp || !cu.ciip) )
+    {
+      CHECK( bdofApplied, "Bcw is disallowed with BIO" );
+      pcYuvDst.addWeightedAvg( pcYuvSrc0, pcYuvSrc1, clpRngs, cu.BcwIdx, chromaOnly, lumaOnly );
+      if( yuvPredTmp )
+      {
+        yuvPredTmp->addAvg( pcYuvSrc0, pcYuvSrc1, clpRngs, chromaOnly, lumaOnly );
+      }
+      return;
+    }
+    
     if (bdofApplied)
     {
       xApplyBDOF( pcYuvDst.Y(), clpRngs[COMP_Y] );
@@ -1074,7 +1130,7 @@ void DMVR::xCopyAndPad( const CodingUnit& cu, PelUnitBuf& pcPad, RefPicList refI
   for (int compID = start; compID < end; compID++)
   {
     int filtersize = compID == COMP_Y ? NTAPS_LUMA : NTAPS_CHROMA;
-    cMv            = cu.mv[refId];
+    cMv            = cu.mv[refId][0];
     width          = pcPad.bufs[compID].width;
     height         = pcPad.bufs[compID].height;
 
@@ -1106,8 +1162,7 @@ void DMVR::xCopyAndPad( const CodingUnit& cu, PelUnitBuf& pcPad, RefPicList refI
       const int padOffset        = leftTopFilterExt * dstBuf.stride + leftTopFilterExt;
       const int padSize          = (DMVR_NUM_ITERATION) >> getComponentScaleX((ComponentID)compID, cu.chromaFormat);
 
-      g_pelBufOP.copyBuffer((const char*)refBufPtr, refBuf.stride * sizeof(Pel), (char*)(dstBuf.buf - padOffset), dstBuf.stride * sizeof(Pel), width * sizeof(Pel), height);
-      g_pelBufOP.padding   (dstBuf.buf - padOffset, dstBuf.stride, width, height, padSize);
+      xFpPadDmvr( refBufPtr, refBuf.stride, dstBuf.buf - padOffset, dstBuf.stride, width, height, padSize );
     }
   }
 }
@@ -1184,7 +1239,7 @@ void DMVR::xFinalPaddedMCForDMVR( const CodingUnit& cu, PelUnitBuf* dstBuf, cons
     clipMv(cMvClipped, cu.lumaPos(), cu.lumaSize(), *cu.cs->pcv);
     const Picture* refPic = cu.slice->getRefPic(refId, cu.refIdx[refId]);
     const Mv& startMv = mergeMv[refId];
-    for (int compID = 0; compID < MAX_NUM_COMP; compID++)
+    for (int compID = 0; compID < getNumberValidComponents(cu.chromaFormat); compID++)
     {
       int mvshiftTemp = mvShift + getComponentScaleX((ComponentID)compID, cu.chromaFormat);
       int deltaIntMvX = (cMv.hor >> mvshiftTemp) - (startMv.hor >> mvshiftTemp);
@@ -1238,7 +1293,7 @@ void DMVR::xProcessDMVR( const CodingUnit& cu, PelUnitBuf& pcYuvDst, const ClpRn
   const int mvShiftC = mvShift + getChannelTypeScaleX(CH_C, cu.chromaFormat);
 
   /*use merge MV as starting MV*/
-  const Mv mergeMv[] = { cu.mv[REF_PIC_LIST_0] , cu.mv[REF_PIC_LIST_1] };
+  const Mv mergeMv[] = { cu.mv[REF_PIC_LIST_0][0], cu.mv[REF_PIC_LIST_1][0] };
 
 
   const int dy = std::min<int>(cu.lumaSize().height, DMVR_SUBCU_SIZE);
@@ -1255,8 +1310,8 @@ void DMVR::xProcessDMVR( const CodingUnit& cu, PelUnitBuf& pcYuvDst, const ClpRn
     const int dstOffset = -( DMVR_NUM_ITERATION * bilinearBufStride + DMVR_NUM_ITERATION );
 
     /*use merge MV as starting MV*/
-    Mv mergeMVL0 = cu.mv[L0];
-    Mv mergeMVL1 = cu.mv[L1];
+    Mv mergeMVL0 = cu.mv[L0][0];
+    Mv mergeMVL1 = cu.mv[L1][0];
 
     /*Clip the starting MVs*/
     clipMv(mergeMVL0, cu.lumaPos(), cu.lumaSize(), *cu.cs->pcv);
@@ -1292,7 +1347,7 @@ void DMVR::xProcessDMVR( const CodingUnit& cu, PelUnitBuf& pcYuvDst, const ClpRn
     const int bioEnabledThres = 2 * dy * dx;
     const int bd = cu.cs->slice->clpRngs.comp[COMP_Y].bd;
 
-    DistParam distParam = m_pcRdCost->setDistParam( nullptr, nullptr, bilinearBufStride, bilinearBufStride, bd, COMP_Y, dx, dy, 1 );
+    DistParam distParam = m_pcRdCost->setDistParam( nullptr, nullptr, bilinearBufStride, bilinearBufStride, bd, COMP_Y, dx, dy, 1, true );
 
     int num = 0;
     int yStart = 0;
@@ -1403,7 +1458,7 @@ void DMVR::xProcessDMVR( const CodingUnit& cu, PelUnitBuf& pcYuvDst, const ClpRn
   const int scaleX = getComponentScaleX(COMP_Cb, cu.chromaFormat);
   const int scaleY = getComponentScaleY(COMP_Cb, cu.chromaFormat);
 
-  const ptrdiff_t dstStride[MAX_NUM_COMP] = { pcYuvDst.bufs[COMP_Y].stride, pcYuvDst.bufs[COMP_Cb].stride, pcYuvDst.bufs[COMP_Cr].stride };
+  const ptrdiff_t dstStride[MAX_NUM_COMP] = { pcYuvDst.bufs[COMP_Y].stride, cu.chromaFormat != CHROMA_400 ? pcYuvDst.bufs[COMP_Cb].stride : 0, cu.chromaFormat != CHROMA_400 ? pcYuvDst.bufs[COMP_Cr].stride : 0 };
   for (y = puPos.y; y < (puPos.y + cu.lumaSize().height); y = y + dy, yStart = yStart + dy)
   {
     for (x = puPos.x, xStart = 0; x < (puPos.x + cu.lumaSize().width); x = x + dx, xStart = xStart + dx)
@@ -1430,8 +1485,11 @@ void DMVR::xProcessDMVR( const CodingUnit& cu, PelUnitBuf& pcYuvDst, const ClpRn
       xFinalPaddedMCForDMVR( subCu, predBuf, padBuf, bioAppliedType[num], mergeMv, cu.mvdL0SubPu[num] );
 
       subPredBuf.bufs[COMP_Y].buf  = pcYuvDst.bufs[COMP_Y].buf + xStart + yStart * dstStride[COMP_Y];
-      subPredBuf.bufs[COMP_Cb].buf = pcYuvDst.bufs[COMP_Cb].buf + (xStart >> scaleX) + ((yStart >> scaleY) * dstStride[COMP_Cb]);
-      subPredBuf.bufs[COMP_Cr].buf = pcYuvDst.bufs[COMP_Cr].buf + (xStart >> scaleX) + ((yStart >> scaleY) * dstStride[COMP_Cr]);
+      if( cu.chromaFormat != CHROMA_400 )
+      {
+        subPredBuf.bufs[COMP_Cb].buf = pcYuvDst.bufs[COMP_Cb].buf + (xStart >> scaleX) + ((yStart >> scaleY) * dstStride[COMP_Cb]);
+        subPredBuf.bufs[COMP_Cr].buf = pcYuvDst.bufs[COMP_Cr].buf + (xStart >> scaleX) + ((yStart >> scaleY) * dstStride[COMP_Cr]);
+      }
 
       xWeightedAverage(subCu, predBuf[L0], predBuf[L1], subPredBuf, bioAppliedType[num] );
       num++;
@@ -1877,7 +1935,7 @@ void InterPrediction::xIntraBlockCopyIBC(CodingUnit& cu, PelUnitBuf& predBuf, co
   const int shiftSampleHor = getComponentScaleX(compID, cu.chromaFormat);
   const int shiftSampleVer = getComponentScaleY(compID, cu.chromaFormat);
   const int ctuSizeLog2Ver = floorLog2(lcuWidth) - shiftSampleVer;
-  cu.bv = cu.mv[REF_PIC_LIST_0];
+  cu.bv = cu.mv[REF_PIC_LIST_0][0];
   cu.bv.changePrecision(MV_PRECISION_INTERNAL, MV_PRECISION_INT);
   int refx, refy;
   if (compID == COMP_Y)

@@ -305,6 +305,7 @@ VVENC_DECL void vvenc_ReshapeCW_default(vvencReshapeCW *reshapeCW )
 VVENC_DECL void vvenc_vvencMCTF_default(vvencMCTF *vvencMCTF )
 {
   vvencMCTF->MCTF = 0;
+  vvencMCTF->MCTFSpeed = 0;
   vvencMCTF->MCTFFutureReference = true;
   vvencMCTF->MCTFNumLeadFrames = 0;
   vvencMCTF->MCTFNumTrailFrames = 0;
@@ -319,6 +320,7 @@ VVENC_DECL void vvenc_config_default(vvenc_config *c )
   int i = 0;
 
   //basic params
+  c->m_configDone                              = false;
   c->m_confirmFailed                           = false;         ///< state variable
 
   c->m_verbosity                               = VVENC_VERBOSE;       ///< encoder verbosity
@@ -344,6 +346,7 @@ VVENC_DECL void vvenc_config_default(vvenc_config *c )
 
   c->m_RCTargetBitrate                         = 0;
   c->m_RCNumPasses                             = -1;
+  c->m_RCPass                                  = -1;
 
   c->m_SegmentMode                             = VVENC_SEG_OFF;
 
@@ -482,9 +485,8 @@ VVENC_DECL void vvenc_config_default(vvenc_config *c )
   c->m_fastQtBtEnc                             = true;
   c->m_contentBasedFastQtbt                    = false;
   c->m_fastInterSearchMode                     = VVENC_FASTINTERSEARCH_AUTO;
-  c->m_bUseEarlyCU                             = false;
+  c->m_useEarlyCU                              = 0;
   c->m_useFastDecisionForMerge                 = true;
-  c->m_useEarlySkipDetection                   = false;
 
   c->m_bDisableIntraCUsInInterSlices           = false;
   c->m_bUseConstrainedIntraPred                = false;
@@ -504,17 +506,20 @@ VVENC_DECL void vvenc_config_default(vvenc_config *c )
   c->m_Geo                                     = 0;
   c->m_maxNumGeoCand                           = 5;
   c->m_FastIntraTools                          = 0;
+  c->m_IntraEstDecBit                          = 1;
 
   c->m_RCInitialQP                             = 0;
   c->m_RCForceIntraQP                          = false;
 
   c->m_motionEstimationSearchMethod            = VVENC_MESEARCH_DIAMOND;
+  c->m_motionEstimationSearchMethodSCC         = 0;
   c->m_bRestrictMESampling                     = false;
   c->m_SearchRange                             = 96;
   c->m_bipredSearchRange                       = 4;
   c->m_minSearchWindow                         = 8;
   c->m_bClipForBiPredMeEnabled                 = false;
   c->m_bFastMEAssumingSmootherMVEnabled        = true;
+  c->m_bIntegerET                              = false;
   c->m_fastSubPel                              = 0;
   c->m_SMVD                                    = 0;
   c->m_AMVRspeed                               = 0;
@@ -525,7 +530,7 @@ VVENC_DECL void vvenc_config_default(vvenc_config *c )
   c->m_BDOF                                    = false;
   c->m_DMVR                                    = false;
   c->m_EDO                                     = 0;
-  c->m_lumaReshapeEnable                       = false;
+  c->m_lumaReshapeEnable                       = 0;
   c->m_reshapeSignalType                       = 0;
   c->m_updateCtrl                              = 0;
   c->m_adpOption                               = 0;
@@ -557,6 +562,11 @@ VVENC_DECL void vvenc_config_default(vvenc_config *c )
 
   c->m_IBCMode                                 = 0;
   c->m_IBCFastMethod                           = 1;
+
+  c->m_BCW                                     = 0;
+
+  c->m_FIMMode                                 = 0;
+  c->m_FastInferMerge                          = 0;
 
   c->m_bLoopFilterDisable                      = false;
   c->m_loopFilterOffsetInPPS                   = true;
@@ -601,6 +611,7 @@ VVENC_DECL void vvenc_config_default(vvenc_config *c )
   c->m_preferredTransferCharacteristics        = -1;
 
   c->m_alf                                     = false;
+  c->m_alfSpeed                                = 0;
   c->m_useNonLinearAlfLuma                     = true;
   c->m_useNonLinearAlfChroma                   = true;
   c->m_maxNumAlfAlternativesChroma             = VVENC_MAX_NUM_ALF_ALTERNATIVES_CHROMA;
@@ -610,8 +621,11 @@ VVENC_DECL void vvenc_config_default(vvenc_config *c )
 
   vvenc_vvencMCTF_default( &c->m_vvencMCTF );
 
-  c->m_dqThresholdVal                          = 8;
-  c->m_qtbttSpeedUp                            = 0;
+  c->m_quantThresholdVal                       = -1;
+  c->m_qtbttSpeedUp                            = 1;
+#if 1//QTBTT_SPEED3
+  c->m_qtbttSpeedUpMode                        = 0;
+#endif 
 
   c->m_fastLocalDualTreeMode                   = 0;
 
@@ -637,6 +651,10 @@ VVENC_DECL void vvenc_config_default(vvenc_config *c )
   c->m_listTracingChannels                     = false;
   memset( c->m_traceRule, '\0', sizeof(c->m_traceRule) );
   memset( c->m_traceFile, '\0', sizeof(c->m_traceFile) );
+
+  c->m_numIntraModesFullRD = -1;
+  c->m_reduceIntraChromaModesFullRD = false;
+
 
   // init default preset
   vvenc_init_preset( c, vvencPresetMode::VVENC_MEDIUM );
@@ -702,6 +720,9 @@ VVENC_DECL bool vvenc_init_config_parameter( vvenc_config *c )
 
   vvenc_confirmParameter( c, c->m_verbosity < VVENC_SILENT || c->m_verbosity > VVENC_DETAILS, "verbosity is out of range[0..6]" );
 
+  vvenc_confirmParameter( c,  (c->m_numIntraModesFullRD < -1 || c->m_numIntraModesFullRD == 0 || c->m_numIntraModesFullRD > 3), "Error: NumIntraModesFullRD must be -1 or between 1 and 3");
+
+  
   if ( c->m_confirmFailed )
   {
     return c->m_confirmFailed;
@@ -751,12 +772,15 @@ VVENC_DECL bool vvenc_init_config_parameter( vvenc_config *c )
     }
   }
 
-  if( c->m_temporalSubsampleRatio )
+  if( !c->m_configDone )
   {
-    int framesSubsampled = (c->m_framesToBeEncoded + c->m_temporalSubsampleRatio - 1) / c->m_temporalSubsampleRatio;
-    if( c->m_framesToBeEncoded != framesSubsampled )
+    if( c->m_temporalSubsampleRatio )
     {
-      c->m_framesToBeEncoded = framesSubsampled;
+      int framesSubsampled = ( c->m_framesToBeEncoded + c->m_temporalSubsampleRatio - 1 ) / c->m_temporalSubsampleRatio;
+      if( c->m_framesToBeEncoded != framesSubsampled )
+      {
+        c->m_framesToBeEncoded = framesSubsampled;
+      }
     }
   }
 
@@ -794,7 +818,13 @@ VVENC_DECL bool vvenc_init_config_parameter( vvenc_config *c )
   }
 
   // rate control
-  if( c->m_RCNumPasses < 0 ) c->m_RCNumPasses = 1;
+  if( c->m_RCNumPasses < 0 )
+  {
+    if( c->m_RCPass > 0 )
+      c->m_RCNumPasses = 2;
+    else
+      c->m_RCNumPasses = c->m_RCTargetBitrate > 0 ? 2 : 1;
+  }
 
   // threading
   if( c->m_numThreads < 0 )
@@ -818,6 +848,12 @@ VVENC_DECL bool vvenc_init_config_parameter( vvenc_config *c )
     {
       c->m_maxParallelFrames = 2;
     }
+  }
+
+  // quantization threshold
+  if( c->m_quantThresholdVal < 0 )
+  {
+    c->m_quantThresholdVal = 8;
   }
 
   // MCTF
@@ -1148,9 +1184,9 @@ VVENC_DECL bool vvenc_init_config_parameter( vvenc_config *c )
   // do some check and set of parameters next
   //
 
-  if ( c->m_lumaReshapeEnable)
+  if ( c->m_lumaReshapeEnable )
   {
-    if ( c->m_updateCtrl > 0 && c->m_adpOption > 2) { c->m_adpOption -= 2; }
+    if ( c->m_updateCtrl > 0 && c->m_adpOption > 2 ) { c->m_adpOption -= 2; }
   }
 
   if ( c->m_JointCbCrMode && ( c->m_internChromaFormat == VVENC_CHROMA_400) )
@@ -1220,7 +1256,7 @@ VVENC_DECL bool vvenc_init_config_parameter( vvenc_config *c )
     c->m_cuQpDeltaSubdiv = 0;
     if ( c->m_usePerceptQPA
         && c->m_QP <= vvenc::MAX_QP_PERCEPT_QPA
-        && c->m_CTUSize == 128
+        && ( c->m_CTUSize == 128 || ( c->m_CTUSize == 64 && c->m_PadSourceWidth <= 1024 && c->m_PadSourceHeight <= 640 ) )
         && c->m_PadSourceWidth <= 2048
         && c->m_PadSourceHeight <= 1280 )
     {
@@ -1986,7 +2022,10 @@ VVENC_DECL bool vvenc_init_config_parameter( vvenc_config *c )
   vvenc_checkCharArrayStr( c->m_summaryOutFilename, VVENC_MAX_STRING_LEN);
   vvenc_checkCharArrayStr( c->m_summaryPicFilenameBase, VVENC_MAX_STRING_LEN);
 
+  c->m_configDone = true;
+
   c->m_confirmFailed = checkCfgParameter(c);
+
   return( c->m_confirmFailed );
 }
 
@@ -2006,9 +2045,10 @@ static bool checkCfgParameter( vvenc_config *c )
 
   vvenc_confirmParameter( c, c->m_level   == vvencLevel::VVENC_LEVEL_AUTO, "can not determin level");
 
-  vvenc_confirmParameter( c, c->m_fastInterSearchMode<VVENC_FASTINTERSEARCH_AUTO || c->m_fastInterSearchMode>VVENC_FASTINTERSEARCH_MODE3, "Error: FastInterSearchMode parameter out of range" );
+  vvenc_confirmParameter( c, c->m_fastInterSearchMode<VVENC_FASTINTERSEARCH_AUTO || c->m_fastInterSearchMode>VVENC_FASTINTERSEARCH_MODE3,    "Error: FastInterSearchMode parameter out of range" );
   vvenc_confirmParameter( c, c->m_motionEstimationSearchMethod < 0 || c->m_motionEstimationSearchMethod >= VVENC_MESEARCH_NUMBER_OF_METHODS, "Error: FastSearch parameter out of range" );
-  vvenc_confirmParameter( c, c->m_internChromaFormat >= VVENC_NUM_CHROMA_FORMAT,                                                "Intern chroma format must be either 400, 420, 422 or 444" );
+  vvenc_confirmParameter( c, c->m_motionEstimationSearchMethodSCC < 0 || c->m_motionEstimationSearchMethodSCC > 3,                           "Error: FastSearchSCC parameter out of range" );
+  vvenc_confirmParameter( c, c->m_internChromaFormat > VVENC_CHROMA_420,                                                                     "Intern chroma format must be either 400, 420" );
 
   switch ( c->m_conformanceWindowMode)
   {
@@ -2109,8 +2149,8 @@ static bool checkCfgParameter( vvenc_config *c )
 #endif
 
 
-  vvenc_confirmParameter( c, (c->m_HdrMode != VVENC_HDR_OFF && c->m_internalBitDepth[0] < 10 )     ,       "internalBitDepth must be at least 10 bit for HDR");
-  vvenc_confirmParameter( c, (c->m_HdrMode != VVENC_HDR_OFF && c->m_internChromaFormat != VVENC_CHROMA_420 ) ,"internChromaFormat must YCbCr 4:2:0 for HDR");
+  vvenc_confirmParameter( c, (c->m_HdrMode != VVENC_HDR_OFF && c->m_internalBitDepth[0] < 10 )     ,       "InternalBitDepth must be at least 10 bit for HDR");
+  vvenc_confirmParameter( c, (c->m_HdrMode != VVENC_HDR_OFF && c->m_internChromaFormat != VVENC_CHROMA_420 ) ,"ChromaFormatIDC must be YCbCr 4:2:0 for HDR");
   vvenc_confirmParameter( c, (c->m_contentLightLevel[0] < 0 || c->m_contentLightLevel[0] > 10000),  "max content light level must 0 <= cll <= 10000 ");
   vvenc_confirmParameter( c, (c->m_contentLightLevel[1] < 0 || c->m_contentLightLevel[1] > 10000),  "max average content light level must 0 <= cll <= 10000 ");
 
@@ -2136,9 +2176,10 @@ static bool checkCfgParameter( vvenc_config *c )
   vvenc_confirmParameter( c, c->m_InputQueueSize < c->m_GOPSize ,                                              "Input queue size must be greater or equal to gop size" );
   vvenc_confirmParameter( c, c->m_vvencMCTF.MCTF && c->m_InputQueueSize < c->m_GOPSize + vvenc::MCTF_ADD_QUEUE_DELAY , "Input queue size must be greater or equal to gop size + N frames for MCTF" );
 
-  vvenc_confirmParameter( c, c->m_DecodingRefreshType < 0 || c->m_DecodingRefreshType > 3,                     "Decoding Refresh Type must be comprised between 0 and 3 included" );
-  vvenc_confirmParameter( c, c->m_IntraPeriod > 0 && !(c->m_DecodingRefreshType==1 || c->m_DecodingRefreshType==2), "Only Decoding Refresh Type CRA for non low delay supported" );                  //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  vvenc_confirmParameter( c, c->m_DecodingRefreshType < 0 || c->m_DecodingRefreshType > 4,                     "Decoding Refresh Type must be comprised between 0 and 3 included" );
+  vvenc_confirmParameter( c, c->m_IntraPeriod > 0 && !(c->m_DecodingRefreshType==1 || c->m_DecodingRefreshType==2 || c->m_DecodingRefreshType==4), "Only Decoding Refresh Type CRA for non low delay supported" );                  //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   vvenc_confirmParameter( c, c->m_IntraPeriod < 0 && c->m_DecodingRefreshType !=0,                             "Only Decoding Refresh Type 0 for low delay supported" );
+
   vvenc_confirmParameter( c, c->m_QP < -6 * (c->m_internalBitDepth[0] - 8) || c->m_QP > vvenc::MAX_QP,                "QP exceeds supported range (-QpBDOffsety to 63)" );
   for( int comp = 0; comp < 3; comp++)
   {
@@ -2155,6 +2196,7 @@ static bool checkCfgParameter( vvenc_config *c )
   vvenc_confirmParameter( c, c->m_vvencMCTF.MCTFNumLeadFrames  > 0 && ! c->m_vvencMCTF.MCTF,                 "MCTF disabled but number of MCTF lead frames is given" );
   vvenc_confirmParameter( c, c->m_vvencMCTF.MCTFNumTrailFrames > 0 && ! c->m_vvencMCTF.MCTF,                 "MCTF disabled but number of MCTF trailing frames is given" );
   vvenc_confirmParameter( c, c->m_vvencMCTF.MCTFNumTrailFrames > 0 && c->m_framesToBeEncoded <= 0, "If number of MCTF trailing frames is given, the total number of frames to be encoded has to be set" );
+  vvenc_confirmParameter( c, c->m_vvencMCTF.MCTFSpeed < 0 || c->m_vvencMCTF.MCTFSpeed > 4 ,        "MCTFSpeed exceeds supported range (0..4)" );
   vvenc_confirmParameter( c, c->m_SegmentMode != VVENC_SEG_OFF && c->m_framesToBeEncoded < VVENC_MCTF_RANGE,  "When using segment parallel encoding more then 2 frames have to be encoded" );
 
   if (c->m_lumaReshapeEnable)
@@ -2190,6 +2232,28 @@ static bool checkCfgParameter( vvenc_config *c )
   vvenc_confirmParameter( c, c->m_FastIntraTools <0 || c->m_FastIntraTools >2, "SpeedIntraTools out of range [0..2]");
   vvenc_confirmParameter( c, c->m_IBCMode < 0 ||  c->m_IBCMode > 2,            "IBC out of range [0..2]");
   vvenc_confirmParameter( c, c->m_IBCFastMethod < 0 ||  c->m_IBCFastMethod > 6,"IBCFastMethod out of range [0..6]");
+  vvenc_confirmParameter( c, c->m_BCW < 0 || c->m_BCW > 2,                     "BCW out of range [0..2]");
+  vvenc_confirmParameter( c, c->m_FIMMode < 0 || c->m_FIMMode > 4,             "FastInferMerge out of range [0..4]");
+#if QTBTT_SPEED3
+  vvenc_confirmParameter( c, c->m_qtbttSpeedUp < 0 || c->m_qtbttSpeedUp > 7,   "QtbttExtraFast out of range [0..7]");
+#else
+  vvenc_confirmParameter( c, c->m_qtbttSpeedUp < 0 || c->m_qtbttSpeedUp > 3,   "QtbttExtraFast out of range [0..3]");
+#endif
+
+  const int fimModeMap[] = { 0, 3, 19, 27, 29 };
+  c->m_FastInferMerge = fimModeMap[ c->m_FIMMode ];
+  if( 1 << ( c->m_FastInferMerge & 7 ) > c->m_GOPSize )
+  {
+    const int hbm = c->m_FastInferMerge >> 3;
+    const int lbm = std::max<int>( 7, log2( c->m_GOPSize ) );
+    c->m_FastInferMerge = ( hbm << 3 ) | lbm;
+  }
+
+#if QTBTT_SPEED3
+  c->m_qtbttSpeedUpMode = (c->m_qtbttSpeedUp > 2) ? (c->m_qtbttSpeedUp - 2) : 0;
+  const int QTBTSMModeMap[] = { 0, 1, 3, 4, 5, 7 };
+  c->m_qtbttSpeedUpMode = QTBTSMModeMap[c->m_qtbttSpeedUpMode];
+#endif
 
   if( c->m_alf )
   {
@@ -2198,10 +2262,14 @@ static bool checkCfgParameter( vvenc_config *c )
 
   vvenc_confirmParameter( c, c->m_useFastMrg < 0 || c->m_useFastMrg > 2,   "FastMrg out of range [0..2]" );
   vvenc_confirmParameter( c, c->m_useFastMIP < 0 || c->m_useFastMIP > 4,   "FastMIP out of range [0..4]" );
-  vvenc_confirmParameter( c, c->m_fastSubPel < 0 || c->m_fastSubPel > 1,   "FastSubPel out of range [0..1]" );
+  vvenc_confirmParameter( c, c->m_fastSubPel < 0 || c->m_fastSubPel > 2,   "FastSubPel out of range [0..2]" );
+  vvenc_confirmParameter( c, c->m_useEarlyCU < 0 || c->m_useEarlyCU > 2,   "ECU out of range [0..2]" );
 
   vvenc_confirmParameter( c, c->m_RCTargetBitrate == 0 && c->m_RCNumPasses != 1, "Only single pass encoding supported, when rate control is disabled" );
   vvenc_confirmParameter( c, c->m_RCNumPasses < 1 || c->m_RCNumPasses > 2,       "Only one pass or two pass encoding supported" );
+  vvenc_confirmParameter( c, c->m_RCNumPasses < 2 && c->m_RCPass > 1,            "Only one pass supported in single pass encoding" );
+  vvenc_confirmParameter( c, c->m_RCPass != -1 && ( c->m_RCPass < 1 || c->m_RCPass > 2 ), "Invalid pass parameter, only -1, 1 or 2 supported" );
+  vvenc_confirmParameter( c, c->m_RCTargetBitrate > 0 && c->m_maxParallelFrames > 4, "Up to 4 parallel frames supported with rate control" );
 
   vvenc_confirmParameter(c, !((c->m_level==VVENC_LEVEL1)
     || (c->m_level==VVENC_LEVEL2) || (c->m_level==VVENC_LEVEL2_1)
@@ -2241,10 +2309,7 @@ static bool checkCfgParameter( vvenc_config *c )
   vvenc_confirmParameter(c, c->m_usePerceptQPATempFiltISlice > 0 && c->m_vvencMCTF.MCTF == 0,                        "PerceptQPATempFiltIPic must be turned off when MCTF is off" );
 
   vvenc_confirmParameter(c, c->m_usePerceptQPA && (c->m_cuQpDeltaSubdiv > 2),                                     "MaxCuDQPSubdiv must be 2 or smaller when PerceptQPA is on" );
-  if ( c->m_DecodingRefreshType == 2 )
-  {
-    vvenc_confirmParameter( c, c->m_IntraPeriod > 0 && c->m_IntraPeriod <= c->m_GOPSize ,                                   "Intra period must be larger than GOP size for periodic IDR pictures");
-  }
+
   vvenc_confirmParameter(c, c->m_MaxCodingDepth > vvenc::MAX_CU_DEPTH,                                                      "MaxPartitionDepth exceeds predefined MAX_CU_DEPTH limit");
   vvenc_confirmParameter(c, c->m_MinQT[0] < 1<<vvenc::MIN_CU_LOG2,                                                          "Minimum QT size should be larger than or equal to 4");
   vvenc_confirmParameter(c, c->m_MinQT[1] < 1<<vvenc::MIN_CU_LOG2,                                                          "Minimum QT size should be larger than or equal to 4");
@@ -2276,14 +2341,16 @@ static bool checkCfgParameter( vvenc_config *c )
   vvenc_confirmParameter(c, c->m_confWinTop    % vvenc::SPS::getWinUnitY(c->m_internChromaFormat) != 0, "Top conformance window offset must be an integer multiple of the specified chroma subsampling");
   vvenc_confirmParameter(c, c->m_confWinBottom % vvenc::SPS::getWinUnitY(c->m_internChromaFormat) != 0, "Bottom conformance window offset must be an integer multiple of the specified chroma subsampling");
 
-  vvenc_confirmParameter(c, c->m_numThreads < 0,                                               "NumThreads out of range" );
+  vvenc_confirmParameter(c, c->m_numThreads < 0,                                                  "NumThreads out of range" );
   vvenc_confirmParameter(c, c->m_ensureWppBitEqual < 0       || c->m_ensureWppBitEqual > 1,       "WppBitEqual out of range (0,1)");
   vvenc_confirmParameter(c, c->m_useAMaxBT < 0               || c->m_useAMaxBT > 1,               "AMaxBT out of range (0,1)");
   vvenc_confirmParameter(c, c->m_cabacInitPresent < 0        || c->m_cabacInitPresent > 1,        "CabacInitPresent out of range (0,1)");
   vvenc_confirmParameter(c, c->m_alfTempPred < 0             || c->m_alfTempPred > 1,             "ALFTempPred out of range (0,1)");
+  vvenc_confirmParameter(c, c->m_alfSpeed < 0                || c->m_alfSpeed > 1,                "ALFSpeed out of range (0,1)");
+  vvenc_confirmParameter(c, c->m_maxTempLayer > 1 && c->m_maxTempLayer - c->m_alfSpeed <= 0,      "ALFSpeed disables ALF for this temporal configuration. Disable ALF if intended, or turn off ALFSpeed!");
   vvenc_confirmParameter(c, c->m_saoEncodingRate < 0.0       || c->m_saoEncodingRate > 1.0,       "SaoEncodingRate out of range [0.0 .. 1.0]");
   vvenc_confirmParameter(c, c->m_saoEncodingRateChroma < 0.0 || c->m_saoEncodingRateChroma > 1.0, "SaoEncodingRateChroma out of range [0.0 .. 1.0]");
-  vvenc_confirmParameter(c, c->m_maxParallelFrames < 0,                                        "MaxParallelFrames out of range" );
+  vvenc_confirmParameter(c, c->m_maxParallelFrames < 0,                                           "MaxParallelFrames out of range" );
 
   vvenc_confirmParameter(c, c->m_numThreads > 0 && c->m_ensureWppBitEqual == 0, "NumThreads > 0 requires WppBitEqual > 0");
 
@@ -2631,341 +2698,521 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
   std::copy(qpVals.begin(), qpVals.end(), c->m_qpOutValsCb);
 
   // basic settings
-  c->m_intraQPOffset                 = -3;
-  c->m_lambdaFromQPEnable            = true;
-  c->m_MaxCodingDepth                = 5;
-  c->m_log2DiffMaxMinCodingBlockSize = 5;
-  c->m_bUseASR                       = true;
-  c->m_bUseHADME                     = true;
-  c->m_useRDOQTS                     = true;
-  c->m_useSelectiveRDOQ              = false;
-  c->m_fastQtBtEnc                   = true;
-  c->m_fastInterSearchMode           = VVENC_FASTINTERSEARCH_MODE1;
-  c->m_motionEstimationSearchMethod  = VVENC_MESEARCH_DIAMOND_FAST;
-  c->m_SearchRange                   = 384;
-  c->m_minSearchWindow               = 96;
-  c->m_maxNumMergeCand               = 6;
-  c->m_TSsize                        = 3;
-  c->m_reshapeSignalType             = 0;
-  c->m_updateCtrl                    = 0;
-  c->m_LMCSOffset                    = 6;
-  c->m_RDOQ                          = 1;
-  c->m_SignDataHidingEnabled         = 0;
-  c->m_useFastLCTU                   = 1;
+  c->m_intraQPOffset                   = -3;
+  c->m_lambdaFromQPEnable              = true;
+  c->m_MaxCodingDepth                  = 5;
+  c->m_log2DiffMaxMinCodingBlockSize   = 5;
+  c->m_bUseASR                         = true;
+  c->m_bUseHADME                       = true;
+  c->m_useRDOQTS                       = true;
+  c->m_useSelectiveRDOQ                = false;
+  c->m_fastQtBtEnc                     = true;
+  c->m_maxNumMergeCand                 = 6;
+  c->m_reshapeSignalType               = 0;
+  c->m_updateCtrl                      = 0;
+  c->m_LMCSOffset                      = 6;
+  c->m_RDOQ                            = 1;
+  c->m_SignDataHidingEnabled           = 0;
+  c->m_useFastLCTU                     = 1;
 
-  // partitioning
-  c->m_CTUSize                       = 128;
-  c->m_dualITree                     = 1;
-  c->m_MinQT[ 0 ]                    = 8;
-  c->m_MinQT[ 1 ]                    = 8;
-  c->m_MinQT[ 2 ]                    = 4;
-  c->m_maxMTTDepth                   = 3;
-  c->m_maxMTTDepthI                  = 3;
-  c->m_maxMTTDepthIChroma            = 3;
-  c->m_log2MinCodingBlockSize        = 2;
+  // tools
+  c->m_Affine                          = 0;
+  c->m_alf                             = 0;
+  c->m_alfSpeed                        = 0;
+  c->m_allowDisFracMMVD                = 0;
+  c->m_BCW                             = 0;
+  c->m_BDOF                            = 0;
+  c->m_ccalf                           = 0;
+  c->m_CIIP                            = 0;
+  c->m_DepQuantEnabled                 = 0;
+  c->m_DMVR                            = 0;
+  c->m_EDO                             = 0;
+  c->m_Geo                             = 0;
+  c->m_AMVRspeed                       = 0;
+  c->m_ISP                             = 0;
+  c->m_JointCbCrMode                   = 0;
+  c->m_LFNST                           = 0;
+  c->m_LMChroma                        = 0;
+  c->m_lumaReshapeEnable               = 0;
+  c->m_vvencMCTF.MCTF                  = 0;
+  c->m_vvencMCTF.MCTFSpeed             = 0;
+  c->m_MIP                             = 0;
+  c->m_useFastMIP                      = 0;
+  c->m_MMVD                            = 0;
+  c->m_MRL                             = 0;
+  c->m_MTS                             = 0;
+  c->m_MTSImplicit                     = 0;
+  c->m_PROF                            = 0;
+  c->m_bUseSAO                         = 1;
+  c->m_SbTMVP                          = 0;
+  c->m_SBT                             = 0;
+  c->m_SMVD                            = 0;
+  c->m_TMVPModeId                      = 1;
+  c->m_useNonLinearAlfChroma           = 0;
+  c->m_useNonLinearAlfLuma             = 0;
 
-  // disable tools
-
-  c->m_Affine                        = 0;
-  c->m_alf                           = 0;
-  c->m_allowDisFracMMVD              = 0;
-  c->m_useBDPCM                      = 0;
-  c->m_BDOF                          = 0;
-  c->m_ccalf                         = 0;
-  c->m_useChromaTS                   = 0;
-  c->m_CIIP                          = 0;
-  c->m_DepQuantEnabled               = 0;
-  c->m_DMVR                          = 0;
-  c->m_EDO                           = 0;
-  c->m_Geo                           = 0;
-  c->m_IBCMode                       = 0;
-  c->m_IBCFastMethod                 = 1;
-  c->m_AMVRspeed                     = 0;
-  c->m_ISP                           = 0;
-  c->m_JointCbCrMode                 = 0;
-  c->m_LFNST                         = 0;
-  c->m_LMChroma                      = 0;
-  c->m_lumaReshapeEnable             = 0;
-  c->m_vvencMCTF.MCTF                = 0;
-  c->m_MIP                           = 0;
-  c->m_MMVD                          = 0;
-  c->m_MRL                           = 0;
-  c->m_MTS                           = 0;
-  c->m_MTSImplicit                   = 0;
-  c->m_PROF                          = 0;
-  c->m_bUseSAO                       = 0;
-  c->m_SbTMVP                        = 0;
-  c->m_SBT                           = 0;
-  c->m_SMVD                          = 0;
-  c->m_TMVPModeId                    = 0;
-  c->m_TS                            = 0;
-  c->m_useNonLinearAlfChroma         = 0;
-  c->m_useNonLinearAlfLuma           = 0;
-
-  // enable speedups
-  c->m_qtbttSpeedUp                  = 2;
-  c->m_contentBasedFastQtbt          = 1;
-  c->m_usePbIntraFast                = 1;
-  c->m_useFastMrg                    = 2;
-  c->m_useFastMIP                    = 4;
-  c->m_fastLocalDualTreeMode         = 1;
-  c->m_fastSubPel                    = 1;
-  c->m_FastIntraTools                = 0;
+  // ssc tools
+  c->m_motionEstimationSearchMethodSCC = 2;
+  c->m_useBDPCM                        = 2;
+  c->m_IBCMode                         = 2;
+  c->m_IBCFastMethod                   = 6;
+  c->m_TS                              = 2;
+  c->m_useChromaTS                     = 0;
+  c->m_TSsize                          = 3;
 
   switch( preset )
   {
-    case vvencPresetMode::VVENC_FASTER:
-#if RC_INTRA_MODEL_OPT
-      c->m_BDOF                      = 1;
-      c->m_DMVR                      = 1;
-#endif
     case vvencPresetMode::VVENC_FIRSTPASS:
-      // CTUSize64 QT44MTT00
-      c->m_CTUSize                   = 64;
-      c->m_MinQT[ 0 ]                = 4;
-      c->m_MinQT[ 1 ]                = 4;
-      c->m_MinQT[ 2 ]                = 2;
-      c->m_maxMTTDepth               = 0;
-      c->m_maxMTTDepthI              = 0;
-      c->m_maxMTTDepthIChroma        = 0;
+      c->m_DMVR                            = 0;
 
-      c->m_RDOQ                      = 2;
-      c->m_SignDataHidingEnabled     = 1;
+      // motion estimation
+      c->m_SearchRange                     = 128;
+      c->m_bipredSearchRange               = 1;
+      c->m_minSearchWindow                 = 96;
+      c->m_fastInterSearchMode             = VVENC_FASTINTERSEARCH_MODE1;
+      c->m_motionEstimationSearchMethod    = VVENC_MESEARCH_DIAMOND_FAST;
 
-      c->m_useBDPCM                  = 2;
-#if !RC_INTRA_MODEL_OPT
-      c->m_BDOF                      = 1;
-      c->m_DMVR                      = 1;
-#endif
-      c->m_IBCMode                   = 2;
-      c->m_IBCFastMethod             = 6;
-      c->m_LMChroma                  = 1;
-      c->m_MTSImplicit               = 1;
-      c->m_bUseSAO                   = 1;
-      c->m_TMVPModeId                = 1;
-      c->m_TS                        = 2;
+      // partitioning: CTUSize64 QT44MTT00
+      c->m_CTUSize                         = 64;
+      c->m_dualITree                       = 1;
+      c->m_MinQT[ 0 ]                      = 32;
+      c->m_MinQT[ 1 ]                      = 32;
+      c->m_MinQT[ 2 ]                      = 16;
+      c->m_maxMTTDepth                     = 0;
+      c->m_maxMTTDepthI                    = 0;
+      c->m_maxMTTDepthIChroma              = 0;
+      c->m_log2MinCodingBlockSize          = 5;
+
+      // speedups
+      c->m_qtbttSpeedUp                    = 7;
+      c->m_contentBasedFastQtbt            = 0;
+      c->m_usePbIntraFast                  = 1;
+      c->m_useFastMrg                      = 2;
+      c->m_fastLocalDualTreeMode           = 1;
+      c->m_fastSubPel                      = 2;
+      c->m_FastIntraTools                  = 0;
+      c->m_FIMMode                         = 4;
+      c->m_useEarlyCU                      = 2;
+      c->m_bIntegerET                      = 1;
+      c->m_IntraEstDecBit                  = 3;
+      c->m_numIntraModesFullRD             = 1;
+      c->m_reduceIntraChromaModesFullRD    = true;
+
+      // tools
+      c->m_RDOQ                            = 2;
+      c->m_SignDataHidingEnabled           = 1;
+      c->m_LMChroma                        = 1;
+      c->m_vvencMCTF.MCTF                  = 2;
+      c->m_vvencMCTF.MCTFSpeed             = 4;
+      c->m_MTSImplicit                     = 1;
+      // scc
+      c->m_IBCFastMethod                   = 6;
+      c->m_TSsize                          = 3;
+
+      break;
+
+    case vvencPresetMode::VVENC_FASTER:
+      c->m_DMVR                            = 1;
+
+      // motion estimation
+      c->m_SearchRange                     = 128;
+      c->m_bipredSearchRange               = 1;
+      c->m_minSearchWindow                 = 96;
+      c->m_fastInterSearchMode             = VVENC_FASTINTERSEARCH_MODE1;
+      c->m_motionEstimationSearchMethod    = VVENC_MESEARCH_DIAMOND_FAST;
+
+      // partitioning: CTUSize64 QT44MTT00
+      c->m_CTUSize                         = 64;
+      c->m_dualITree                       = 1;
+      c->m_MinQT[ 0 ]                      = 4;
+      c->m_MinQT[ 1 ]                      = 4;
+      c->m_MinQT[ 2 ]                      = 2;
+      c->m_maxMTTDepth                     = 0;
+      c->m_maxMTTDepthI                    = 0;
+      c->m_maxMTTDepthIChroma              = 0;
+      c->m_log2MinCodingBlockSize          = 2;
+
+      // speedups
+      c->m_qtbttSpeedUp                    = 7;
+      c->m_contentBasedFastQtbt            = 1;
+      c->m_usePbIntraFast                  = 1;
+      c->m_useFastMrg                      = 2;
+      c->m_fastLocalDualTreeMode           = 1;
+      c->m_fastSubPel                      = 1;
+      c->m_FastIntraTools                  = 0;
+      c->m_FIMMode                         = 4;
+      c->m_useEarlyCU                      = 1;
+      c->m_bIntegerET                      = 1;
+      c->m_IntraEstDecBit                  = 3;
+      c->m_numIntraModesFullRD             = 1;
+      c->m_reduceIntraChromaModesFullRD    = true;
+
+      // tools
+      c->m_alf                             = 1;
+      c->m_alfSpeed                        = 1;
+      c->m_ccalf                           = 1;
+      c->m_RDOQ                            = 2;
+      c->m_SignDataHidingEnabled           = 1;
+      c->m_LMChroma                        = 1;
+      c->m_vvencMCTF.MCTF                  = 2;
+      c->m_vvencMCTF.MCTFSpeed             = 4;
+      c->m_MTSImplicit                     = 1;
+      // scc
+      c->m_IBCFastMethod                   = 6;
+      c->m_TSsize                          = 3;
 
       break;
 
     case vvencPresetMode::VVENC_FAST:
-      // CTUSize64 QT44MTT10
-      c->m_CTUSize                   = 64;
-      c->m_MinQT[ 0 ]                = 4;
-      c->m_MinQT[ 1 ]                = 4;
-      c->m_MinQT[ 2 ]                = 2;
-      c->m_maxMTTDepth               = 0;
-      c->m_maxMTTDepthI              = 1;
-      c->m_maxMTTDepthIChroma        = 1;
 
-      c->m_RDOQ                      = 2;
-      c->m_SignDataHidingEnabled     = 1;
+      // motion estimation
+      c->m_SearchRange                     = 128;
+      c->m_bipredSearchRange               = 1;
+      c->m_minSearchWindow                 = 96;
+      c->m_fastInterSearchMode             = VVENC_FASTINTERSEARCH_MODE1;
+      c->m_motionEstimationSearchMethod    = VVENC_MESEARCH_DIAMOND_FAST;
 
-      c->m_Affine                    = 2;
-      c->m_alf                       = 1;
-      c->m_ccalf                     = 1;
-      c->m_useBDPCM                  = 2;
-      c->m_BDOF                      = 1;
-      c->m_DMVR                      = 1;
-      c->m_IBCMode                   = 2;
-      c->m_IBCFastMethod             = 4;
-      c->m_AMVRspeed                 = 5;
-      c->m_LFNST                     = 1;
-      c->m_LMChroma                  = 1;
-      c->m_vvencMCTF.MCTF            = 2;
-      c->m_MTSImplicit               = 1;
-      c->m_PROF                      = 1;
-      c->m_bUseSAO                   = 1;
-      c->m_TMVPModeId                = 1;
-      c->m_TS                        = 2;
+      // partitioning: CTUSize64 QT44MTT10
+      c->m_CTUSize                         = 64;
+      c->m_dualITree                       = 1;
+      c->m_MinQT[ 0 ]                      = 4;
+      c->m_MinQT[ 1 ]                      = 4;
+      c->m_MinQT[ 2 ]                      = 2;
+      c->m_maxMTTDepth                     = 0;
+      c->m_maxMTTDepthI                    = 1;
+      c->m_maxMTTDepthIChroma              = 1;
+      c->m_log2MinCodingBlockSize          = 2;
+
+      // speedups                          
+      c->m_qtbttSpeedUp                    = 3;
+      c->m_contentBasedFastQtbt            = 1;
+      c->m_usePbIntraFast                  = 1;
+      c->m_useFastMrg                      = 2;
+      c->m_fastLocalDualTreeMode           = 1;
+      c->m_fastSubPel                      = 1;
+      c->m_FastIntraTools                  = 0;
+      c->m_FIMMode                         = 2;
+      c->m_useEarlyCU                      = 1;
+      c->m_bIntegerET                      = 0;
+      c->m_IntraEstDecBit                  = 2;
+      c->m_numIntraModesFullRD             = -1;
+      c->m_reduceIntraChromaModesFullRD    = true;
+
+      // tools                             
+      c->m_RDOQ                            = 2;
+      c->m_SignDataHidingEnabled           = 1;
+      c->m_Affine                          = 2;
+      c->m_alf                             = 1;
+      c->m_alfSpeed                        = 1;
+      c->m_allowDisFracMMVD                = 1;
+      c->m_BDOF                            = 1;
+      c->m_ccalf                           = 1;
+      c->m_DMVR                            = 1;
+      c->m_AMVRspeed                       = 5;
+      c->m_JointCbCrMode                   = 1;
+      c->m_LFNST                           = 1;
+      c->m_LMChroma                        = 1;
+      c->m_lumaReshapeEnable               = 2;
+      c->m_vvencMCTF.MCTF                  = 2;
+      c->m_vvencMCTF.MCTFSpeed             = 1;
+      c->m_MMVD                            = 3;
+      c->m_MRL                             = 1;
+      c->m_MTSImplicit                     = 1;
+      c->m_PROF                            = 1;
+      c->m_SbTMVP                          = 1;
+      // scc
+      c->m_IBCFastMethod                   = 4;
+      c->m_TSsize                          = 4;
 
       break;
 
     case vvencPresetMode::VVENC_MEDIUM:
-      // CTUSize128 QT44MTT21
-      c->m_CTUSize                   = 128;
-      c->m_MinQT[ 0 ]                = 8;
-      c->m_MinQT[ 1 ]                = 8;
-      c->m_MinQT[ 2 ]                = 4;
-      c->m_maxMTTDepth               = 1;
-      c->m_maxMTTDepthI              = 2;
-      c->m_maxMTTDepthIChroma        = 2;
 
-      c->m_Affine                    = 2;
-      c->m_alf                       = 1;
-      c->m_allowDisFracMMVD          = 1;
-      c->m_useBDPCM                  = 2;
-      c->m_BDOF                      = 1;
-      c->m_ccalf                     = 1;
-      c->m_DepQuantEnabled           = 1;
-      c->m_DMVR                      = 1;
-      c->m_EDO                       = 2;
-      c->m_Geo                       = 3;
-      c->m_IBCMode                   = 2;
-      c->m_IBCFastMethod             = 3;
-      c->m_AMVRspeed                 = 5;
-      c->m_ISP                       = 3;
-      c->m_JointCbCrMode             = 1;
-      c->m_LFNST                     = 1;
-      c->m_LMChroma                  = 1;
-      c->m_lumaReshapeEnable         = 1;
-      c->m_vvencMCTF.MCTF            = 2;
-      c->m_MIP                       = 1;
-      c->m_MMVD                      = 3;
-      c->m_MRL                       = 1;
-      c->m_MTSImplicit               = 1;
-      c->m_PROF                      = 1;
-      c->m_bUseSAO                   = 1;
-      c->m_SbTMVP                    = 1;
-      c->m_SMVD                      = 3;
-      c->m_TMVPModeId                = 1;
-      c->m_TS                        = 2;
+      // motion estimation
+      c->m_SearchRange                     = 384;
+      c->m_bipredSearchRange               = 4;
+      c->m_minSearchWindow                 = 96;
+      c->m_fastInterSearchMode             = VVENC_FASTINTERSEARCH_MODE1;
+      c->m_motionEstimationSearchMethod    = VVENC_MESEARCH_DIAMOND_FAST;
 
-      c->m_FastIntraTools            = 1;
+      // partitioning: CTUSize128 QT44MTT21
+      c->m_CTUSize                         = 128;
+      c->m_dualITree                       = 1;
+      c->m_MinQT[ 0 ]                      = 8;
+      c->m_MinQT[ 1 ]                      = 8;
+      c->m_MinQT[ 2 ]                      = 4;
+      c->m_maxMTTDepth                     = 1;
+      c->m_maxMTTDepthI                    = 2;
+      c->m_maxMTTDepthIChroma              = 2;
+      c->m_log2MinCodingBlockSize          = 2;
+
+      // speedups                          
+      c->m_qtbttSpeedUp                    = 3;
+      c->m_contentBasedFastQtbt            = 0;
+      c->m_usePbIntraFast                  = 1;
+      c->m_useFastMrg                      = 2;
+      c->m_fastLocalDualTreeMode           = 1;
+      c->m_fastSubPel                      = 1;
+      c->m_FastIntraTools                  = 1;
+      c->m_FIMMode                         = 0;
+      c->m_useEarlyCU                      = 0;
+      c->m_bIntegerET                      = 0;
+      c->m_IntraEstDecBit                  = 2;
+      c->m_numIntraModesFullRD             = -1;
+      c->m_reduceIntraChromaModesFullRD    = false;
+
+      // tools
+      c->m_Affine                          = 2;
+      c->m_alf                             = 1;
+      c->m_alfSpeed                        = 0;
+      c->m_allowDisFracMMVD                = 1;
+      c->m_BDOF                            = 1;
+      c->m_ccalf                           = 1;
+      c->m_DepQuantEnabled                 = 1;
+      c->m_DMVR                            = 1;
+      c->m_EDO                             = 2;
+      c->m_Geo                             = 3;
+      c->m_AMVRspeed                       = 5;
+      c->m_ISP                             = 3;
+      c->m_JointCbCrMode                   = 1;
+      c->m_LFNST                           = 1;
+      c->m_LMChroma                        = 1;
+      c->m_lumaReshapeEnable               = 2;
+      c->m_vvencMCTF.MCTF                  = 2;
+      c->m_vvencMCTF.MCTFSpeed             = 0;
+      c->m_MIP                             = 1;
+      c->m_useFastMIP                      = 4;
+      c->m_MMVD                            = 3;
+      c->m_MRL                             = 1;
+      c->m_MTSImplicit                     = 1;
+      c->m_PROF                            = 1;
+      c->m_SbTMVP                          = 1;
+      c->m_SMVD                            = 3;
+      // scc
+      c->m_IBCFastMethod                   = 3;
+      c->m_TSsize                          = 4;
+
       break;
 
     case vvencPresetMode::VVENC_SLOW:
-      // CTUSize128 QT44MTT32
-      c->m_CTUSize                   = 128;
-      c->m_MinQT[ 0 ]                = 8;
-      c->m_MinQT[ 1 ]                = 8;
-      c->m_MinQT[ 2 ]                = 4;
-      c->m_maxMTTDepth               = 2;
-      c->m_maxMTTDepthI              = 3;
-      c->m_maxMTTDepthIChroma        = 3;
 
-      c->m_Affine                    = 2;
-      c->m_alf                       = 1;
-      c->m_allowDisFracMMVD          = 1;
-      c->m_useBDPCM                  = 2;
-      c->m_BDOF                      = 1;
-      c->m_ccalf                     = 1;
-      c->m_DepQuantEnabled           = 1;
-      c->m_CIIP                      = 1;
-      c->m_DMVR                      = 1;
-      c->m_EDO                       = 2;
-      c->m_Geo                       = 1;
-      c->m_IBCMode                   = 2;
-      c->m_IBCFastMethod             = 1;
-      c->m_AMVRspeed                 = 1;
-      c->m_ISP                       = 3;
-      c->m_JointCbCrMode             = 1;
-      c->m_LFNST                     = 1;
-      c->m_LMChroma                  = 1;
-      c->m_lumaReshapeEnable         = 1;
-      c->m_vvencMCTF.MCTF            = 2;
-      c->m_MIP                       = 1;
-      c->m_MMVD                      = 3;
-      c->m_MRL                       = 1;
-      c->m_MTSImplicit               = 1;
-      c->m_PROF                      = 1;
-      c->m_bUseSAO                   = 1;
-      c->m_SbTMVP                    = 1;
-      c->m_SBT                       = 1;
-      c->m_SMVD                      = 3;
-      c->m_TMVPModeId                = 1;
-      c->m_TS                        = 2;
+      // motion estimation
+      c->m_SearchRange                     = 384;
+      c->m_bipredSearchRange               = 4;
+      c->m_minSearchWindow                 = 96;
+      c->m_fastInterSearchMode             = VVENC_FASTINTERSEARCH_MODE1;
+      c->m_motionEstimationSearchMethod    = VVENC_MESEARCH_DIAMOND_FAST;
 
-      c->m_contentBasedFastQtbt      = 0;
+      // partitioning: CTUSize128 QT44MTT32
+      c->m_CTUSize                         = 128;
+      c->m_dualITree                       = 1;
+      c->m_MinQT[ 0 ]                      = 8;
+      c->m_MinQT[ 1 ]                      = 8;
+      c->m_MinQT[ 2 ]                      = 4;
+      c->m_maxMTTDepth                     = 2;
+      c->m_maxMTTDepthI                    = 3;
+      c->m_maxMTTDepthIChroma              = 3;
+      c->m_log2MinCodingBlockSize          = 2;
+
+      // speedups                          
+      c->m_qtbttSpeedUp                    = 2;
+      c->m_contentBasedFastQtbt            = 0;
+      c->m_usePbIntraFast                  = 1;
+      c->m_useFastMrg                      = 2;
+      c->m_fastLocalDualTreeMode           = 1;
+      c->m_fastSubPel                      = 1;
+      c->m_FastIntraTools                  = 0;
+      c->m_FIMMode                         = 0;
+      c->m_useEarlyCU                      = 0;
+      c->m_bIntegerET                      = 0;
+      c->m_IntraEstDecBit                  = 1;
+      c->m_numIntraModesFullRD             = -1;
+      c->m_reduceIntraChromaModesFullRD    = false;
+
+      // tools
+      c->m_Affine                          = 2;
+      c->m_alf                             = 1;
+      c->m_alfSpeed                        = 0;
+      c->m_allowDisFracMMVD                = 1;
+      c->m_BCW                             = 2;
+      c->m_BDOF                            = 1;
+      c->m_ccalf                           = 1;
+      c->m_CIIP                            = 1;
+      c->m_DepQuantEnabled                 = 1;
+      c->m_DMVR                            = 1;
+      c->m_EDO                             = 2;
+      c->m_Geo                             = 1;
+      c->m_AMVRspeed                       = 1;
+      c->m_ISP                             = 1;
+      c->m_JointCbCrMode                   = 1;
+      c->m_LFNST                           = 1;
+      c->m_LMChroma                        = 1;
+      c->m_lumaReshapeEnable               = 2;
+      c->m_vvencMCTF.MCTF                  = 2;
+      c->m_vvencMCTF.MCTFSpeed             = 0;
+      c->m_MIP                             = 1;
+      c->m_useFastMIP                      = 0;
+      c->m_MMVD                            = 3;
+      c->m_MRL                             = 1;
+      c->m_MTSImplicit                     = 1;
+      c->m_PROF                            = 1;
+      c->m_SBT                             = 1;
+      c->m_SbTMVP                          = 1;
+      c->m_SMVD                            = 3;
+      // scc
+      c->m_IBCFastMethod                   = 1;
+      c->m_TSsize                          = 5;
+
       break;
 
     case vvencPresetMode::VVENC_SLOWER:
 
-      c->m_motionEstimationSearchMethod = VVENC_MESEARCH_DIAMOND;
+      // motion estimation
+      c->m_SearchRange                     = 384;
+      c->m_bipredSearchRange               = 4;
+      c->m_minSearchWindow                 = 96;
+      c->m_fastInterSearchMode             = VVENC_FASTINTERSEARCH_MODE1;
+      c->m_motionEstimationSearchMethod    = VVENC_MESEARCH_DIAMOND;
 
-      // CTUSize128 QT44MTT33
-      c->m_CTUSize                   = 128;
-      c->m_MinQT[ 0 ]                = 8;
-      c->m_MinQT[ 1 ]                = 8;
-      c->m_MinQT[ 2 ]                = 4;
-      c->m_maxMTTDepth               = 3;
-      c->m_maxMTTDepthI              = 3;
-      c->m_maxMTTDepthIChroma        = 3;
+      // partitioning: CTUSize128 QT44MTT33
+      c->m_CTUSize                         = 128;
+      c->m_dualITree                       = 1;
+      c->m_MinQT[ 0 ]                      = 8;
+      c->m_MinQT[ 1 ]                      = 8;
+      c->m_MinQT[ 2 ]                      = 4;
+      c->m_maxMTTDepth                     = 3;
+      c->m_maxMTTDepthI                    = 3;
+      c->m_maxMTTDepthIChroma              = 3;
+      c->m_log2MinCodingBlockSize          = 2;
 
-      c->m_Affine                    = 1;
-      c->m_alf                       = 1;
-      c->m_allowDisFracMMVD          = 1;
-      c->m_useBDPCM                  = 2;
-      c->m_BDOF                      = 1;
-      c->m_ccalf                     = 1;
-      c->m_DepQuantEnabled           = 1;
-      c->m_CIIP                      = 1;
-      c->m_DMVR                      = 1;
-      c->m_EDO                       = 2;
-      c->m_Geo                       = 1;
-      c->m_IBCMode                   = 2;
-      c->m_IBCFastMethod             = 1;
-      c->m_AMVRspeed                 = 1;
-      c->m_ISP                       = 1;
-      c->m_JointCbCrMode             = 1;
-      c->m_LFNST                     = 1;
-      c->m_LMChroma                  = 1;
-      c->m_lumaReshapeEnable         = 1;
-      c->m_vvencMCTF.MCTF            = 2;
-      c->m_MIP                       = 1;
-      c->m_MMVD                      = 1;
-      c->m_MRL                       = 1;
-      c->m_MTS                       = 1;
-      c->m_MTSImplicit               = 0;
-      c->m_PROF                      = 1;
-      c->m_bUseSAO                   = 1;
-      c->m_SbTMVP                    = 1;
-      c->m_SBT                       = 1;
-      c->m_SMVD                      = 1;
-      c->m_TMVPModeId                = 1;
-      c->m_TS                        = 2;
-      c->m_useNonLinearAlfChroma     = 1;
-      c->m_useNonLinearAlfLuma       = 1;
+      // speedups                          
+      c->m_qtbttSpeedUp                    = 1;
+      c->m_contentBasedFastQtbt            = 0;
+      c->m_usePbIntraFast                  = 1;
+      c->m_useFastMrg                      = 1;
+      c->m_fastLocalDualTreeMode           = 1;
+      c->m_fastSubPel                      = 0;
+      c->m_FastIntraTools                  = 0;
+      c->m_FIMMode                         = 0;
+      c->m_useEarlyCU                      = 0;
+      c->m_bIntegerET                      = 0;
+      c->m_IntraEstDecBit                  = 1;
+      c->m_numIntraModesFullRD             = -1;
+      c->m_reduceIntraChromaModesFullRD    = false;
 
-      c->m_qtbttSpeedUp              = 1;
-      c->m_contentBasedFastQtbt      = 0;
-      c->m_useFastMrg                = 1;
-      c->m_useFastMIP                = 0;
-      c->m_fastSubPel                = 0;
+      // tools
+      c->m_Affine                          = 1;
+      c->m_alf                             = 1;
+      c->m_alfSpeed                        = 0;
+      c->m_allowDisFracMMVD                = 1;
+      c->m_BCW                             = 2;
+      c->m_BDOF                            = 1;
+      c->m_ccalf                           = 1;
+      c->m_CIIP                            = 1;
+      c->m_DepQuantEnabled                 = 1;
+      c->m_DMVR                            = 1;
+      c->m_EDO                             = 2;
+      c->m_Geo                             = 1;
+      c->m_AMVRspeed                       = 1;
+      c->m_ISP                             = 1;
+      c->m_JointCbCrMode                   = 1;
+      c->m_LFNST                           = 1;
+      c->m_LMChroma                        = 1;
+      c->m_lumaReshapeEnable               = 2;
+      c->m_vvencMCTF.MCTF                  = 2;
+      c->m_vvencMCTF.MCTFSpeed             = 0;
+      c->m_MIP                             = 1;
+      c->m_useFastMIP                      = 0;
+      c->m_MMVD                            = 1;
+      c->m_MRL                             = 1;
+      c->m_MTS                             = 1;
+      c->m_PROF                            = 1;
+      c->m_SBT                             = 1;
+      c->m_SbTMVP                          = 1;
+      c->m_SMVD                            = 1;
+      c->m_useNonLinearAlfChroma           = 1;
+      c->m_useNonLinearAlfLuma             = 1;
+      // scc
+      c->m_IBCFastMethod                   = 1;
+      c->m_TSsize                          = 5;
+
       break;
 
     case vvencPresetMode::VVENC_TOOLTEST:
-      // CTUSize128 QT44MTT21
-      c->m_CTUSize                   = 128;
-      c->m_MinQT[ 0 ]                = 8;
-      c->m_MinQT[ 1 ]                = 8;
-      c->m_MinQT[ 2 ]                = 4;
-      c->m_maxMTTDepth               = 1;
-      c->m_maxMTTDepthI              = 2;
-      c->m_maxMTTDepthIChroma        = 2;
 
-      c->m_Affine                    = 2;
-      c->m_alf                       = 1;
-      c->m_allowDisFracMMVD          = 1;
-      c->m_useBDPCM                  = 1;
-      c->m_BDOF                      = 1;
-      c->m_ccalf                     = 1;
-      c->m_DepQuantEnabled           = 1;
-      c->m_CIIP                      = 3;
-      c->m_DMVR                      = 1;
-      c->m_EDO                       = 1;
-      c->m_Geo                       = 2;
-      c->m_IBCMode                   = 2;
-      c->m_IBCFastMethod             = 5;
-      c->m_AMVRspeed                 = 3;
-      c->m_ISP                       = 2;
-      c->m_JointCbCrMode             = 1;
-      c->m_LFNST                     = 1;
-      c->m_LMChroma                  = 1;
-      c->m_lumaReshapeEnable         = 1;
-      c->m_vvencMCTF.MCTF            = 2;
-      c->m_MIP                       = 1;
-      c->m_MMVD                      = 2;
-      c->m_MRL                       = 1;
-      c->m_MTS                       = 1;
-      c->m_PROF                      = 1;
-      c->m_bUseSAO                   = 1;
-      c->m_SbTMVP                    = 1;
-      c->m_SBT                       = 2;
-      c->m_SMVD                      = 3;
-      c->m_TMVPModeId                = 1;
-      c->m_TS                        = 1;
-      c->m_useNonLinearAlfChroma     = 1;
-      c->m_useNonLinearAlfLuma       = 1;
+      // motion estimation
+      c->m_SearchRange                     = 384;
+      c->m_bipredSearchRange               = 4;
+      c->m_minSearchWindow                 = 96;
+      c->m_fastInterSearchMode             = VVENC_FASTINTERSEARCH_MODE1;
+      c->m_motionEstimationSearchMethod    = VVENC_MESEARCH_DIAMOND_FAST;
+
+      // partitioning: CTUSize128 QT44MTT21
+      c->m_CTUSize                         = 128;
+      c->m_dualITree                       = 1;
+      c->m_MinQT[ 0 ]                      = 8;
+      c->m_MinQT[ 1 ]                      = 8;
+      c->m_MinQT[ 2 ]                      = 4;
+      c->m_maxMTTDepth                     = 1;
+      c->m_maxMTTDepthI                    = 2;
+      c->m_maxMTTDepthIChroma              = 2;
+      c->m_log2MinCodingBlockSize          = 2;
+
+      // speedups                          
+      c->m_qtbttSpeedUp                    = 2;
+      c->m_contentBasedFastQtbt            = 1;
+      c->m_usePbIntraFast                  = 1;
+      c->m_useFastMrg                      = 2;
+      c->m_fastLocalDualTreeMode           = 1;
+      c->m_fastSubPel                      = 1;
+      c->m_FastIntraTools                  = 1;
+      c->m_FIMMode                         = 3;
+      c->m_useEarlyCU                      = 1;
+      c->m_bIntegerET                      = 1;
+      c->m_IntraEstDecBit                  = 3;
+      c->m_numIntraModesFullRD             = -1;
+      c->m_reduceIntraChromaModesFullRD    = false;
+
+      // tools
+      c->m_Affine                          = 2;
+      c->m_alf                             = 1;
+      c->m_alfSpeed                        = 0;
+      c->m_allowDisFracMMVD                = 1;
+      c->m_BCW                             = 2;
+      c->m_BDOF                            = 1;
+      c->m_ccalf                           = 1;
+      c->m_CIIP                            = 3;
+      c->m_DepQuantEnabled                 = 1;
+      c->m_DMVR                            = 1;
+      c->m_EDO                             = 1;
+      c->m_Geo                             = 2;
+      c->m_AMVRspeed                       = 3;
+      c->m_ISP                             = 2;
+      c->m_JointCbCrMode                   = 1;
+      c->m_LFNST                           = 1;
+      c->m_LMChroma                        = 1;
+      c->m_lumaReshapeEnable               = 2;
+      c->m_vvencMCTF.MCTF                  = 2;
+      c->m_vvencMCTF.MCTFSpeed             = 2;
+      c->m_MIP                             = 1;
+      c->m_useFastMIP                      = 4;
+      c->m_MMVD                            = 2;
+      c->m_MRL                             = 1;
+      c->m_MTS                             = 1;
+      c->m_PROF                            = 1;
+      c->m_SBT                             = 2;
+      c->m_SbTMVP                          = 1;
+      c->m_SMVD                            = 3;
+      c->m_useNonLinearAlfChroma           = 1;
+      c->m_useNonLinearAlfLuma             = 1;
+      // scc
+      c->m_motionEstimationSearchMethodSCC = 3;
+      c->m_useBDPCM                        = 1;
+      c->m_IBCFastMethod                   = 5;
+      c->m_TS                              = 1;
+      c->m_useChromaTS                     = 1;
+      c->m_TSsize                          = 3;
+
       break;
 
     default:
@@ -3054,13 +3301,6 @@ VVENC_DECL const char* vvenc_get_config_as_string( vvenc_config *c, vvencMsgLeve
   css << "TMVP:" << c->m_TMVPModeId << " ";
 
   css << "DQ:" << c->m_DepQuantEnabled << " ";
-  if( c->m_DepQuantEnabled )
-  {
-    if( c->m_dqThresholdVal & 1 )
-      css << "(Thr: " << (c->m_dqThresholdVal >> 1) << ".5) ";
-    else
-      css << "(Thr: " << (c->m_dqThresholdVal >> 1) << ") ";
-  }
   css << "SDH:" << c->m_SignDataHidingEnabled << " ";
   css << "CST:" << c->m_dualITree << " ";
   css << "BDOF:" << c->m_BDOF << " ";
@@ -3111,6 +3351,7 @@ VVENC_DECL const char* vvenc_get_config_as_string( vvenc_config *c, vvencMsgLeve
   }
   css << "BDPCM:" << c->m_useBDPCM << " ";
   css << "IBC:" << c->m_IBCMode << " ";
+  css << "BCW:" << c->m_BCW << " ";
 
   css << "\nENC. ALG. CFG: ";
   css << "QPA:" << c->m_usePerceptQPA << " ";
@@ -3128,11 +3369,14 @@ VVENC_DECL const char* vvenc_get_config_as_string( vvenc_config *c, vvencMsgLeve
   }
 
   css << "\nFAST TOOL CFG: ";
-  css << "ECU:" << c->m_bUseEarlyCU << " ";
+  css << "ECU:" << c->m_useEarlyCU << " ";
   css << "FEN:" << c->m_fastInterSearchMode << " ";
   css << "FDM:" << c->m_useFastDecisionForMerge << " ";
-  css << "ESD:" << c->m_useEarlySkipDetection << " ";
   css << "FastSearch:" << c->m_motionEstimationSearchMethod << " ";
+  if( c->m_motionEstimationSearchMethodSCC )
+  {
+    css << "(SCC:" << c->m_motionEstimationSearchMethodSCC << ") ";
+  }
   css << "LCTUFast:" << c->m_useFastLCTU << " ";
   css << "FastMrg:" << c->m_useFastMrg << " ";
   css << "PBIntraFast:" << c->m_usePbIntraFast << " ";
@@ -3144,19 +3388,35 @@ VVENC_DECL const char* vvenc_get_config_as_string( vvenc_config *c, vvencMsgLeve
     css << "FastMIP:" << c->m_useFastMIP << " ";
   }
   css << "FastIntraTools:" << c->m_FastIntraTools << " ";
+  css << "IntraEstDecBit:" << c->m_IntraEstDecBit << " ";
   css << "FastLocalDualTree:" << c->m_fastLocalDualTreeMode << " ";
+  css << "IntegerET:" << c->m_bIntegerET << " ";
   css << "FastSubPel:" << c->m_fastSubPel << " ";
   css << "QtbttExtraFast:" << c->m_qtbttSpeedUp << " ";
   if( c->m_IBCMode )
   {
     css << "IBCFastMethod:" << c->m_IBCFastMethod << " ";
   }
+  css << "FIM:" << c->m_FIMMode << " ";
+  if( c->m_FastInferMerge )
+  {
+    css << "(" << c->m_FastInferMerge << ") ";
+  }
+  if( c->m_alf )
+  {
+    css << "ALFSpeed:" << c->m_alfSpeed << " ";
+  }
+  if( c->m_quantThresholdVal & 1 )
+    css << "QuantThr: " << (c->m_quantThresholdVal >> 1) << ".5 ";
+  else
+    css << "QuantThr: " << (c->m_quantThresholdVal >> 1) << " ";
 
   css << "\nRATE CONTROL CFG: ";
   css << "RateControl:" << ( c->m_RCTargetBitrate > 0 ) << " ";
   if ( c->m_RCTargetBitrate > 0 )
   {
     css << "Passes:" << c->m_RCNumPasses << " ";
+    css << "Pass:" << c->m_RCPass << " ";
     css << "TargetBitrate:" << c->m_RCTargetBitrate << " ";
     css << "RCInitialQP:" << c->m_RCInitialQP << " ";
     css << "RCForceIntraQP:" << c->m_RCForceIntraQP << " ";

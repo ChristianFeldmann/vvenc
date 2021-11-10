@@ -243,11 +243,18 @@ public:
   std::vector<Pel>              ctuAdaptedQP;
   std::mutex                    wppMutex;
   int                           picInitialQP;
+  double                        picVisActY;
   StopClock                     encTime;
+  bool                          useScME;
   bool                          useScMCTF;
   bool                          useScTS;
   bool                          useScBDPCM;
   bool                          useScIBC;
+  bool                          useScLMCS;
+#if QTBTT_SPEED3
+  int                           useQtbttSpeedUpMode;
+#endif
+  int                           seqBaseQp;
   int                           actualHeadBits;
   int                           actualTotalBits;
   EncRCPic*                     encRCPic;

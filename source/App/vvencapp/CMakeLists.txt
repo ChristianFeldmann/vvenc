@@ -39,3 +39,25 @@ source_group( "Resource Files" FILES ${RESOURCE_FILE} )
 
 # set the folder where to place the projects
 set_target_properties( ${EXE_NAME}  PROPERTIES FOLDER app )
+
+if( VVENC_ENABLE_INSTALL )
+  # set destination directories
+  set( RUNTIME_DEST ${CMAKE_INSTALL_BINDIR} )
+  set( LIBRARY_DEST ${CMAKE_INSTALL_LIBDIR} )
+  set( ARCHIVE_DEST ${CMAKE_INSTALL_LIBDIR} )
+
+  # install targets
+  macro( install_targets config_ )
+    string( TOLOWER ${config_} config_lc_ )
+    install( TARGETS            vvencapp
+            EXPORT              vvencTargets-${config_lc_} 
+            CONFIGURATIONS      ${config_}
+            RUNTIME DESTINATION ${RUNTIME_DEST}
+            LIBRARY DESTINATION ${LIBRARY_DEST}
+            ARCHIVE DESTINATION ${ARCHIVE_DEST} )
+  endmacro( install_targets )
+
+  install_targets( Release )
+  install_targets( Debug )
+  install_targets( RelWithDebInfo )
+endif()

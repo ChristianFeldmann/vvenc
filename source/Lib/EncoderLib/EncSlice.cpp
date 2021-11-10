@@ -68,14 +68,17 @@ THE POSSIBILITY OF SUCH DAMAGE.
 namespace vvenc {
 
 #ifdef TRACE_ENABLE_ITT
-static const __itt_domain* itt_domain_encode            = __itt_domain_create( "Encode" );
-static const __itt_string_handle* itt_handle_ctuEncode  = __itt_string_handle_create( "Encode_CTU" );
-static const __itt_string_handle* itt_handle_rspLfVer   = __itt_string_handle_create( "RspLfVer_CTU" );
-static const __itt_string_handle* itt_handle_lfHor      = __itt_string_handle_create( "LfHor_CTU" );
-static const __itt_string_handle* itt_handle_sao        = __itt_string_handle_create( "SAO_CTU" );
-static const __itt_string_handle* itt_handle_alf_stat   = __itt_string_handle_create( "ALF_CTU_STAT" );
-static const __itt_string_handle* itt_handle_alf_derive = __itt_string_handle_create( "ALF_DERIVE" );
-static const __itt_string_handle* itt_handle_alf_recon  = __itt_string_handle_create( "ALF_RECONSTRUCT" );
+static const __itt_domain* itt_domain_encode              = __itt_domain_create( "Encode" );
+static const __itt_string_handle* itt_handle_ctuEncode    = __itt_string_handle_create( "Encode_CTU" );
+static const __itt_string_handle* itt_handle_rspLfVer     = __itt_string_handle_create( "RspLfVer_CTU" );
+static const __itt_string_handle* itt_handle_lfHor        = __itt_string_handle_create( "LfHor_CTU" );
+static const __itt_string_handle* itt_handle_sao          = __itt_string_handle_create( "SAO_CTU" );
+static const __itt_string_handle* itt_handle_alf_stat     = __itt_string_handle_create( "ALF_CTU_STAT" );
+static const __itt_string_handle* itt_handle_alf_derive   = __itt_string_handle_create( "ALF_DERIVE" );
+static const __itt_string_handle* itt_handle_alf_recon    = __itt_string_handle_create( "ALF_RECONSTRUCT" );
+static const __itt_string_handle* itt_handle_ccalf_stat   = __itt_string_handle_create( "CCALF_CTU_STAT" );
+static const __itt_string_handle* itt_handle_ccalf_derive = __itt_string_handle_create( "CCALF_DERIVE" );
+static const __itt_string_handle* itt_handle_ccalf_recon  = __itt_string_handle_create( "CCALF_RECONSTRUCT" );
 #endif
 
 struct LineEncRsrc
@@ -132,7 +135,6 @@ EncSlice::EncSlice()
   , m_pcRateCtrl         ( nullptr )
   , m_CABACWriter        ( m_BinEncoder )
   , m_encCABACTableIdx   ( VVENC_I_SLICE )
-  , m_appliedSwitchDQQ   ( 0 )
 {
 }
 
@@ -207,8 +209,6 @@ void EncSlice::init( const VVEncCfg& encCfg,
     }
   }
 
-  m_appliedSwitchDQQ = 0;
-
   const int sizeInCtus = pps.pcv->sizeInCtus;
   m_processStates = std::vector<ProcessCtuState>( sizeInCtus );
   m_saoReconParams.resize( sizeInCtus );
@@ -275,11 +275,13 @@ void EncSlice::xInitSliceLambdaQP( Slice* slice, int gopId )
   double dLambda = xCalculateLambda( slice, gopId, slice->depth, dQP, dQP, iQP );
   int sliceChromaQpOffsetIntraOrPeriodic[ 2 ] = { m_pcEncCfg->m_sliceChromaQpOffsetIntraOrPeriodic[ 0 ], m_pcEncCfg->m_sliceChromaQpOffsetIntraOrPeriodic[ 1 ] };
 
+  slice->pic->picVisActY = 0.0; // to allow reusing calculated luma visual activity for rate control
+
   if (slice->pps->sliceChromaQpFlag && m_pcEncCfg->m_usePerceptQPA &&
       ((slice->isIntra() && !slice->sps->IBC) || (m_pcEncCfg->m_sliceChromaQpOffsetPeriodicity > 0 && (slice->poc % m_pcEncCfg->m_sliceChromaQpOffsetPeriodicity) == 0)))
   {
     adaptedLumaQP = BitAllocation::applyQPAdaptationChroma (slice, m_pcEncCfg, iQP, *m_LineEncRsrc[ 0 ]->m_encCu.getQpPtr(),
-                                                            sliceChromaQpOffsetIntraOrPeriodic ); // adapts sliceChromaQpOffsetIntraOrPeriodic[]
+                                                            sliceChromaQpOffsetIntraOrPeriodic, &slice->pic->picVisActY); // adapts sliceChromaQpOffsetIntraOrPeriodic[]
   }
   if (m_pcEncCfg->m_usePerceptQPA)
   {
@@ -382,7 +384,7 @@ void EncSlice::resetQP( Picture* pic, int sliceQP, double& lambda )
   slice->sliceQp = sliceQP;
   for( auto& lineRsc : m_LineEncRsrc )
   {
-    lineRsc->m_encCu.setUpLambda( *slice, lambda, sliceQP, true, true, true );
+    lineRsc->m_encCu.setUpLambda( *slice, lambda, sliceQP, true, true );
   }
 }
 
@@ -398,14 +400,7 @@ int EncSlice::xGetQPForPicture( const Slice* slice, unsigned gopId )
   else
   {
     const SliceType sliceType = slice->sliceType;
-
-    qp = m_pcEncCfg->m_QP;
-    // switch at specific qp and keep this qp offset
-    if( slice->poc == m_pcEncCfg->m_switchPOC )
-    {
-      m_appliedSwitchDQQ = m_pcEncCfg->m_switchDQP;
-    }
-    qp += m_appliedSwitchDQQ;
+    qp = slice->pic->seqBaseQp;
 
     if( sliceType == VVENC_I_SLICE )
     {
@@ -749,7 +744,7 @@ void EncSlice::xProcessCtus( Picture* pic, const unsigned startCtuTsAddr, const 
 
   if( slice.sps->alfEnabled )
   {
-    m_pALF->resetFrameStats();
+    m_pALF->resetFrameStats( slice.sps->ccalfEnabled );
   }
 
   std::fill( m_processStates.begin(), m_processStates.end(), CTU_ENCODE );
@@ -1026,14 +1021,10 @@ bool EncSlice::xProcessCtuTask( int threadIdx, CtuEncParam* ctuEncParam )
         ITT_TASKSTART( itt_domain_encode, itt_handle_alf_stat );
 
         // ALF pre-processing
-        unsigned lastPreProcCTU = ( pcv.heightInCtus * pcv.widthInCtus ) - 1;
-        if( ctuRsAddr <= lastPreProcCTU )
+        if( slice.sps->alfEnabled )
         {
-          if( slice.sps->alfEnabled )
-          {
-            PelUnitBuf recoBuf = cs.picture->getRecoBuf();
-            encSlice->m_pALF->getStatisticsCTU( *cs.picture, cs, recoBuf, ctuRsAddr );
-          }
+          PelUnitBuf recoBuf = cs.picture->getRecoBuf();
+          encSlice->m_pALF->getStatisticsCTU( *cs.picture, cs, recoBuf, ctuRsAddr );
         }
 
         ITT_TASKEND( itt_domain_encode, itt_handle_alf_stat );
@@ -1062,7 +1053,7 @@ bool EncSlice::xProcessCtuTask( int threadIdx, CtuEncParam* ctuEncParam )
         if( slice.sps->alfEnabled )
         {
           encSlice->m_pALF->deriveFilter( *cs.picture, cs, slice.getLambdas() );
-          encSlice->m_pALF->reconstructCoeffAPSs( cs, true, cs.slice->tileGroupAlfEnabled[COMP_Cb] || cs.slice->tileGroupAlfEnabled[COMP_Cr], false );
+          encSlice->m_pALF->reconstructCoeffAPSs( cs, cs.slice->tileGroupAlfEnabled[COMP_Y], cs.slice->tileGroupAlfEnabled[COMP_Cb] || cs.slice->tileGroupAlfEnabled[COMP_Cr], false );
         }
 
         ITT_TASKEND( itt_domain_encode, itt_handle_alf_derive );
@@ -1096,25 +1087,112 @@ bool EncSlice::xProcessCtuTask( int threadIdx, CtuEncParam* ctuEncParam )
         }
 
         ITT_TASKEND( itt_domain_encode, itt_handle_alf_recon );
+        processStates[ctuRsAddr] = CCALF_GET_STATISTICS;
+      }
+      break;
+    case CCALF_GET_STATISTICS:
+      {
+        // ensure all surrounding ctu's are filtered (ALF will use pixels of adjacent CTU's)
+        // due to wpp condition above in ALF_RECONSTRUCT, only right, bottom and bottom-right ctu have to be checked
+        if( ctuPosX + 1 < pcv.widthInCtus && processStates[ctuRsAddr + 1] <= ALF_RECONSTRUCT )
+          return false;
+        if( ctuPosY + 1 < pcv.heightInCtus && processStates[ctuRsAddr + ctuStride] <= ALF_RECONSTRUCT )
+          return false;
+        if( ctuPosX + 1 < pcv.widthInCtus && ctuPosY + 1 < pcv.heightInCtus && processStates[ctuRsAddr + 1 + ctuStride] <= ALF_RECONSTRUCT )
+          return false;
+
+        if( checkReadyState )
+          return true;
+
+        ITT_TASKSTART( itt_domain_encode, itt_handle_ccalf_stat );
+
+        // ALF pre-processing
+        if( slice.sps->ccalfEnabled )
+        {
+          encSlice->m_pALF->deriveStatsForCcAlfFilteringCTU( cs, COMP_Cb, ctuRsAddr );
+          encSlice->m_pALF->deriveStatsForCcAlfFilteringCTU( cs, COMP_Cr, ctuRsAddr );
+          encSlice->m_pALF->copyCTUForCCALF( cs, ctuPosX, ctuPosY );
+        }
+
+        ITT_TASKEND( itt_domain_encode, itt_handle_ccalf_stat );
+
+        // derive alf filter only once for whole picture
+        const unsigned deriveFilterCtu = pcv.sizeInCtus - 1;
+        processStates[ctuRsAddr] = ( ctuRsAddr == deriveFilterCtu ) ? CCALF_DERIVE_FILTER : CCALF_RECONSTRUCT;
+      }
+      break;
+
+    case CCALF_DERIVE_FILTER:
+      {
+        CHECK( ctuRsAddr != pcv.sizeInCtus - 1, "invalid state, derive alf filter only once for last ctu" );
+
+        // ensure statistics from all previous ctu's have been collected
+        for( int i = 0; i < ctuRsAddr; i++ )
+          if( processStates[i] <= CCALF_GET_STATISTICS )
+            return false;
+
+        if( checkReadyState )
+          return true;
+
+        ITT_TASKSTART( itt_domain_encode, itt_handle_ccalf_derive );
+
+        // ALF post-processing
+        if( slice.sps->ccalfEnabled )
+        {
+          encSlice->m_pALF->deriveCcAlfFilter( *cs.picture, cs );
+        }
+
+        ITT_TASKEND( itt_domain_encode, itt_handle_ccalf_derive );
+
+        processStates[ctuRsAddr] = CCALF_RECONSTRUCT;
+      }
+      break;
+
+    case CCALF_RECONSTRUCT:
+      {
+        const unsigned deriveFilterCtu = pcv.sizeInCtus - 1;
+
+        // start alf reconstruct, when derive filter is done
+        if( processStates[deriveFilterCtu] < CCALF_RECONSTRUCT )
+          return false;
+
+        // general wpp conditions, top and top-right ctu have to be encoded
+        if( ctuPosY > 0 && processStates[ctuRsAddr - ctuStride] <= CCALF_RECONSTRUCT )
+          return false;
+        if( ctuPosY > 0 && ctuPosX + 1 < pcv.widthInCtus && processStates[ctuRsAddr - ctuStride + 1] <= CCALF_RECONSTRUCT )
+          return false;
+
+        if( checkReadyState )
+          return true;
+
+        ITT_TASKSTART( itt_domain_encode, itt_handle_ccalf_recon );
+
+        if( slice.sps->ccalfEnabled )
+        {
+          encSlice->m_pALF->applyCcAlfFilterCTU( cs, COMP_Cb, ctuRsAddr );
+          encSlice->m_pALF->applyCcAlfFilterCTU( cs, COMP_Cr, ctuRsAddr );
+        }
+
+        ITT_TASKEND( itt_domain_encode, itt_handle_ccalf_recon );
 
         // perform finish only once for whole picture
         const unsigned finishCtu = pcv.sizeInCtus - 1;
         if( ctuRsAddr < finishCtu )
         {
-          processStates[ ctuRsAddr ] = PROCESS_DONE;
+          processStates[ctuRsAddr] = PROCESS_DONE;
           // processing done => terminate thread
           return true;
         }
-        processStates[ ctuRsAddr ] = FINISH_SLICE;
+        processStates[ctuRsAddr] = FINISH_SLICE;
       }
 
     case FINISH_SLICE:
       {
         CHECK( ctuRsAddr != pcv.sizeInCtus - 1, "invalid state, finish slice only once for last ctu" );
 
-        // ensure ALF has been done for all previous ctu's
+        // ensure all coding tasks have been done for all previous ctu's
         for( int i = 0; i < ctuRsAddr; i++ )
-          if( processStates[ i ] <= ALF_RECONSTRUCT )
+          if( processStates[ i ] < FINISH_SLICE )
             return false;
 
         if( checkReadyState )

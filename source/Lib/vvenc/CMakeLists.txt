@@ -88,14 +88,20 @@ target_compile_definitions( ${LIB_NAME} PUBLIC $<$<AND:$<PLATFORM_ID:Windows>,$<
 target_compile_options( ${LIB_NAME} PRIVATE $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wall -Werror -Wno-deprecated-register -Wno-unused-const-variable -Wno-unknown-attributes>
                                             $<$<CXX_COMPILER_ID:GNU>:-Wall -Werror -Wno-unused-function  -Wno-unused-variable  -Wno-sign-compare  -fdiagnostics-show-option>
                                             $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /wd4100 /wd4127 /wd4244 /wd4245 /wd4251 /wd4310 /wd4389 /wd4456 /wd4457 /wd4458 /wd4459 /wd4505 /wd4701 /wd4702 /wd4703 /wd4996 >)
-                                            
+
 if( CMAKE_COMPILER_IS_GNUCC AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.0 )
   target_compile_options( ${LIB_NAME} PRIVATE $<$<CXX_COMPILER_ID:GNU>: -Wno-array-bounds> )
 endif()
 
-target_include_directories( ${LIB_NAME} PRIVATE           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../../include> $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>                                       
+target_include_directories( ${LIB_NAME} PRIVATE           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../../include> $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
                                         SYSTEM INTERFACE  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../../include> $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}> )
 target_include_directories( ${LIB_NAME} PRIVATE . .. ../DecoderLib ../EncoderLib ../CommonLib ../CommonLib/x86 )
+
+if( VVENC_ENABLE_THIRDPARTY_JSON )
+  set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DVVENC_ENABLE_THIRDPARTY_JSON" )
+  set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DVVENC_ENABLE_THIRDPARTY_JSON" )
+  target_include_directories( ${LIB_NAME} PRIVATE ../../../thirdparty/nlohmann_json/single_include )
+endif()
 
 if( TARGET INTEL_ITT)
   target_link_libraries( ${LIB_NAME} INTEL_ITT Threads::Threads )
@@ -105,3 +111,25 @@ endif()
 
 # set the folder where to place the projects
 set_target_properties( ${LIB_NAME} PROPERTIES FOLDER lib )
+
+if( VVENC_ENABLE_INSTALL )
+  # set destination directories
+  set( RUNTIME_DEST ${CMAKE_INSTALL_BINDIR} )
+  set( LIBRARY_DEST ${CMAKE_INSTALL_LIBDIR} )
+  set( ARCHIVE_DEST ${CMAKE_INSTALL_LIBDIR} )
+
+  # install targets
+  macro( install_targets config_ )
+    string( TOLOWER ${config_} config_lc_ )
+    install( TARGETS            vvenc
+            EXPORT              vvencTargets-${config_lc_} 
+            CONFIGURATIONS      ${config_}
+            RUNTIME DESTINATION ${RUNTIME_DEST}
+            LIBRARY DESTINATION ${LIBRARY_DEST}
+            ARCHIVE DESTINATION ${ARCHIVE_DEST} )
+  endmacro( install_targets )
+
+  install_targets( Release )
+  install_targets( Debug )
+  install_targets( RelWithDebInfo )
+endif()

@@ -88,6 +88,7 @@ enum BitDepthAndColorSpace
   YUV444_10,
   YUV400_8,
   YUV400_10,
+  YUV420_10_PACKED
 };
 
 // ====================================================================================================================
@@ -214,16 +215,19 @@ const std::vector<SVPair<vvencDecodingRefreshType>> DecodingRefreshTypeToEnumMap
   { "cra",                   VVENC_DRT_CRA },
   { "idr",                   VVENC_DRT_IDR },
   { "rpsei",                 VVENC_DRT_RECOVERY_POINT_SEI },
+  { "idr2",                  VVENC_DRT_IDR2 },
   { "0",                     VVENC_DRT_NONE },
   { "1",                     VVENC_DRT_CRA },
   { "2",                     VVENC_DRT_IDR },
   { "3",                     VVENC_DRT_RECOVERY_POINT_SEI },
+  { "4",                     VVENC_DRT_IDR2 },
 };
 
 const std::vector<SVPair<BitDepthAndColorSpace>> BitColorSpaceToIntMap =
 {
   { "yuv420",                    YUV420_8 },
   { "yuv420_10",                 YUV420_10 },
+  { "yuv420_10_packed",          YUV420_10_PACKED },
 };
 
 
@@ -352,14 +356,15 @@ void setInputBitDepthAndColorSpace( VVEncAppCfg* cfg, int dbcs )
 {
   switch( dbcs )
   {
-  case YUV420_8 :  cfg->m_inputFileChromaFormat = VVENC_CHROMA_420; cfg->m_inputBitDepth[0] = 8;  break;
-  case YUV420_10 : cfg->m_inputFileChromaFormat = VVENC_CHROMA_420; cfg->m_inputBitDepth[0] = 10; break;
-  case YUV422_8 :  cfg->m_inputFileChromaFormat = VVENC_CHROMA_422; cfg->m_inputBitDepth[0] = 8;  break;
-  case YUV422_10 : cfg->m_inputFileChromaFormat = VVENC_CHROMA_422; cfg->m_inputBitDepth[0] = 10; break;
-  case YUV444_8 :  cfg->m_inputFileChromaFormat = VVENC_CHROMA_444; cfg->m_inputBitDepth[0] = 8;  break;
-  case YUV444_10 : cfg->m_inputFileChromaFormat = VVENC_CHROMA_444; cfg->m_inputBitDepth[0] = 10; break;
-  case YUV400_8 :  cfg->m_inputFileChromaFormat = VVENC_CHROMA_400; cfg->m_inputBitDepth[0] = 8;  break;
-  case YUV400_10 : cfg->m_inputFileChromaFormat = VVENC_CHROMA_400; cfg->m_inputBitDepth[0] = 10; break;
+  case YUV420_8 :         cfg->m_inputFileChromaFormat = VVENC_CHROMA_420; cfg->m_inputBitDepth[0] = 8;  break;
+  case YUV420_10 :        cfg->m_inputFileChromaFormat = VVENC_CHROMA_420; cfg->m_inputBitDepth[0] = 10; break;
+  case YUV420_10_PACKED : cfg->m_inputFileChromaFormat = VVENC_CHROMA_420; cfg->m_inputBitDepth[0] = 10; cfg->m_packedYUVInput=true; break;
+  case YUV422_8 :         cfg->m_inputFileChromaFormat = VVENC_CHROMA_422; cfg->m_inputBitDepth[0] = 8;  break;
+  case YUV422_10 :        cfg->m_inputFileChromaFormat = VVENC_CHROMA_422; cfg->m_inputBitDepth[0] = 10; break;
+  case YUV444_8 :         cfg->m_inputFileChromaFormat = VVENC_CHROMA_444; cfg->m_inputBitDepth[0] = 8;  break;
+  case YUV444_10 :        cfg->m_inputFileChromaFormat = VVENC_CHROMA_444; cfg->m_inputBitDepth[0] = 10; break;
+  case YUV400_8 :         cfg->m_inputFileChromaFormat = VVENC_CHROMA_400; cfg->m_inputBitDepth[0] = 8;  break;
+  case YUV400_10 :        cfg->m_inputFileChromaFormat = VVENC_CHROMA_400; cfg->m_inputBitDepth[0] = 10; break;
   default: break;
   }
 }
@@ -423,7 +428,7 @@ bool VVEncAppCfg::parseCfg( int argc, char* argv[] )
   opts.addOptions()
   ("input,i",           m_inputFileName,          "original YUV input file name or '-' for reading from stdin")
   ("size,s",            toSourceSize,             "specify input resolution (WidthxHeight)")
-  ("format,c",          toInputFormatBitdepth,    "set input format (yuv420, yuv420_10)")
+  ("format,c",          toInputFormatBitdepth,    "set input format (yuv420, yuv420_10, yuv420_10_packed)")
 
   ("framerate,r",       m_FrameRate,              "temporal rate (framerate) e.g. 25,29,30,50,59,60 ")
   ("tickspersec",       m_TicksPerSecond,         "Ticks Per Second for dts generation, (1..27000000)")
@@ -444,14 +449,16 @@ bool VVEncAppCfg::parseCfg( int argc, char* argv[] )
   ("preset",            toPreset,                 "select preset for specific encoding setting (faster, fast, medium, slow, slower)")
 
   ("bitrate,b",         m_RCTargetBitrate,        "bitrate for rate control (0: constant-QP encoding without rate control, otherwise bits/second)" )
-  ("passes,p",          m_RCNumPasses,            "number of rate control passes (1,2) " )
+  ("passes,p",          m_RCNumPasses,            "number of rate control passes (1,2)" )
+  ("pass",              m_RCPass,                 "rate control pass for two-pass rate control (-1,1,2)" )
+  ("rcstatsfile",       m_RCStatsFileName,        "rate control statistics file" )
   ("qp,q",              m_QP,                     "quantization parameter, QP (0-63)")
   ("qpa",               toQPA,                    "Enable perceptually motivated QP adaptation, XPSNR based (0:off, 1:on)", true)
 
   ("threads,-t",        m_numThreads,             "Number of threads default: [size < 720p: 4, >= 720p: 8]")
 
   ("gopsize,g",         m_GOPSize,                "GOP size of temporal structure (16,32)")
-  ("refreshtype,-rt",   toDecRefreshType,         "intra refresh type (idr,cra)")
+  ("refreshtype,-rt",   toDecRefreshType,         "intra refresh type (idr,cra,idr2)")
   ("refreshsec,-rs",    m_IntraPeriodSec,         "Intra period/refresh in seconds")
   ("intraperiod,-ip",   m_IntraPeriod,            "Intra period in frames (0: use intra period in seconds (refreshsec), else: n*gopsize)")
   ;
@@ -481,7 +488,7 @@ bool VVEncAppCfg::parseCfg( int argc, char* argv[] )
   ("hrdparameterspresent,-hrd", toHrd,                 "Emit VUI HRD information (auto(-1),off(0),on(1); default: auto - only if needed by dependent options)",  true)
   ("decodedpicturehash,-dph",   toHashType,            "Control generation of decode picture hash SEI messages, (0:off, 1:md5, 2:crc, 3:checksum)")
   ;
-  
+
   if ( vvenc_is_tracing_enabled() )
   {
     opts.setSubSection( "Tracing" );
@@ -521,37 +528,22 @@ bool VVEncAppCfg::parseCfg( int argc, char* argv[] )
 
   if ( err.is_errored && ! warnUnknowParameter )
   {
-    /* error report has already been printed on stderr */
+    // error report has already been printed
     return false;
   }
-
-  //
-  // check own parameters
-  //
 
   if( m_showVersion )
   {
     return true;
   }
 
-  if( m_bitstreamFileName.empty() )
-  {
-    cout <<  "error: A bitstream file name must be specified (--output=bit.266)" << std::endl;
-    return false;
-  }
-
-  // this has to be set outside
+  // has to be set outside
   if ( m_internChromaFormat < 0 || m_internChromaFormat >= VVENC_NUM_CHROMA_FORMAT )
   {
     m_internChromaFormat = m_inputFileChromaFormat;
   }
 
-  if( m_RCNumPasses < 0 )
-  {
-    m_RCNumPasses = m_RCTargetBitrate > 0 ? 2 : 1;
-  }
-
-  return true;
+  return checkCfg();
 }
 
 
@@ -668,13 +660,16 @@ bool VVEncAppCfg::parseCfgFF( int argc, char* argv[] )
   opts.addOptions()
   ("IntraPeriod,-ip",                                 m_IntraPeriod,                                    "Intra period in frames, (-1: only first frame)")
   ("RefreshSec,-rs",                                  m_IntraPeriodSec,                                 "Intra period in seconds")
-  ("DecodingRefreshType,-dr",                         toDecRefreshType,                                 "Intra refresh type (0:none, 1:CRA, 2:IDR, 3:RecPointSEI)")
+  ("DecodingRefreshType,-dr",                         toDecRefreshType,                                 "Intra refresh type (0:none, 1:CRA, 2:IDR, 3:RecPointSEI, 4:IDR2)")
   ("GOPSize,g",                                       m_GOPSize,                                        "GOP size of temporal structure")
   ;
 
   opts.setSubSection("Rate control, Perceptual Quantization");
   opts.addOptions()
-  ("NumPasses",                                       m_RCNumPasses,                                    "number of passes; 1: one-pass rate control; 2: two-pass rate control" )
+  ("NumPasses",                                       m_RCNumPasses,                                    "number of rate control passes (1,2)" )
+  ("Passes",                                          m_RCNumPasses,                                    "number of rate control passes (1,2)" )
+  ("Pass",                                            m_RCPass,                                         "rate control pass for two-pass rate control (-1,1,2)" )
+  ("RCStatsFile",                                     m_RCStatsFileName,                                "rate control statistics file" )
   ("TargetBitrate",                                   m_RCTargetBitrate,                                "Rate control: target bit-rate [bps]" )
 
   ("PerceptQPA,-qpa",                                 m_usePerceptQPA,                                  "Enable perceptually motivated QP adaptation, XPSNR based (0:off, 1:on)", true)
@@ -727,6 +722,7 @@ bool VVEncAppCfg::parseCfgFF( int argc, char* argv[] )
   ("VerticalPadding",                                 m_aiPad[1],                                       "Vertical source padding for conformance window mode 2")
 
   ("InputChromaFormat",                               toInputFileCoFormat,                              "input file chroma format (400, 420, 422, 444)")
+  ("PackedInput",                                     m_packedYUVInput,                                 "Enable 10-bit packed YUV input data ( pack 4 samples( 8-byte) into 5-bytes consecutively.")
   ;
 
   opts.setSubSection("Quality reporting metrics");
@@ -752,7 +748,7 @@ bool VVEncAppCfg::parseCfgFF( int argc, char* argv[] )
 
   opts.setSubSection("Rate control, Perceptual Quantization");
   opts.addOptions()
-  ("RCInitialQP",                                     m_RCInitialQP,                                    "Rate control: initial QP" )
+  ("RCInitialQP",                                     m_RCInitialQP,                                    "Rate control: initial QP. With two-pass encoding, this specifies the first-pass base QP (instead of using a default QP). Activated if value is greater than zero" )
   ("RCForceIntraQP",                                  m_RCForceIntraQP,                                 "Rate control: force intra QP to be equal to initial QP" )
 
   ("PerceptQPATempFiltIPic",                          m_usePerceptQPATempFiltISlice,                    "Temporal high-pass filter in QPA activity calculation for key pictures (0:off, 1:on, 2:on incl. temporal pumping reduction, -1:auto)")
@@ -814,6 +810,7 @@ bool VVEncAppCfg::parseCfgFF( int argc, char* argv[] )
 
   ("WaveFrontSynchro",                                m_entropyCodingSyncEnabled,                       "Enable entropy coding sync")
   ("EntryPointsPresent",                              m_entryPointsPresent,                             "Enable entry points in slice header")
+
   ;
 
   opts.setSubSection("Quad-Tree size and depth");
@@ -862,9 +859,8 @@ bool VVEncAppCfg::parseCfgFF( int argc, char* argv[] )
   ("FastQtBtEnc",                                     m_fastQtBtEnc,                                    "Fast encoding setting for QTBT")
   ("ContentBasedFastQtbt",                            m_contentBasedFastQtbt,                           "Signal based QTBT speed-up")
   ("FEN",                                             m_fastInterSearchMode,                            "fast encoder setting")
-  ("ECU",                                             m_bUseEarlyCU,                                    "Early CU setting")
+  ("ECU",                                             m_useEarlyCU,                                     "Early CU setting (1: ECU limited to specific block size and TL, 2: unconstrained ECU)")
   ("FDM",                                             m_useFastDecisionForMerge,                        "Fast decision for Merge RD Cost")
-  ("ESD",                                             m_useEarlySkipDetection,                          "Early SKIP detection setting")
 
   ("DisableIntraInInter",                             m_bDisableIntraCUsInInterSlices,                  "Flag to disable intra CUs in inter slices")
   ("ConstrainedIntraPred",                            m_bUseConstrainedIntraPred,                       "Constrained Intra Prediction")
@@ -874,7 +870,7 @@ bool VVEncAppCfg::parseCfgFF( int argc, char* argv[] )
   ("MTSImplicit",                                     m_MTSImplicit,                                    "Enable implicit MTS when explicit MTS is off\n")
   ("TMVPMode",                                        m_TMVPModeId,                                     "TMVP mode enable(0: off 1: for all slices 2: for certain slices only)")
   ("DepQuant",                                        m_DepQuantEnabled,                                "Enable dependent quantization" )
-  ("DQThrVal",                                        m_dqThresholdVal,                                 "Quantization threshold value for DQ last coefficient search" )
+  ("QuantThrVal",                                     m_quantThresholdVal,                              "Quantization threshold value for DQ last coefficient search" )
   ("SignHideFlag",                                    m_SignDataHidingEnabled,                          "Enable sign data hiding" )
   ("MIP",                                             m_MIP,                                            "Enable MIP (matrix-based intra prediction)")
   ("FastMIP",                                         m_useFastMIP,                                     "Fast encoder search for MIP (matrix-based intra prediction)")
@@ -883,19 +879,22 @@ bool VVEncAppCfg::parseCfgFF( int argc, char* argv[] )
   ("Geo",                                             m_Geo,                                            "Enable geometric partitioning mode (0:off, 1:on)")
   ("MaxNumGeoCand",                                   m_maxNumGeoCand,                                  "Maximum number of geometric partitioning mode candidates")
   ("FastIntraTools",                                  m_FastIntraTools,                                 "SpeedUPIntraTools:LFNST,ISP,MTS. (0:off, 1:speed1, 2:speed2)")
+  ("IntraEstDecBit",                                  m_IntraEstDecBit,                                 "Intra estimation decimation binary exponent for first pass directional modes screening (only test each (2^N)-th mode in the first estimation pass)")
   ;
 
   // motion search options
   opts.setSubSection("Motion search options");
   opts.addOptions()
-  ("FastSearch",                                      m_motionEstimationSearchMethod,                   "Serach mode (0:Full search 1:Diamond 2:Selective 3:Enhanced Diamond)")
+  ("FastSearch",                                      m_motionEstimationSearchMethod,                   "Search mode (0:Full search 1:Diamond 2:Selective 3:Enhanced Diamond 4: FastDiamond)")
+  ("FastSearchSCC",                                   m_motionEstimationSearchMethodSCC,                "Search mode for SCC (0:use non SCC-search 1:Selective 2:DiamondSCC 3:FastDiamondSCC)")
   ("RestrictMESampling",                              m_bRestrictMESampling,                            "Enable restrict ME Sampling for selective inter motion search")
   ("SearchRange,-sr",                                 m_SearchRange,                                    "Motion search range")
   ("BipredSearchRange",                               m_bipredSearchRange,                              "Motion search range for bipred refinement")
   ("MinSearchWindow",                                 m_minSearchWindow,                                "Minimum motion search window size for the adaptive window ME")
   ("ClipForBiPredMEEnabled",                          m_bClipForBiPredMeEnabled,                        "Enable clipping in the Bi-Pred ME.")
   ("FastMEAssumingSmootherMVEnabled",                 m_bFastMEAssumingSmootherMVEnabled,               "Enable fast ME assuming a smoother MV.")
-  ("FastSubPel",                                      m_fastSubPel,                                     "Enable fast sub-pel ME")
+  ("IntegerET",                                       m_bIntegerET,                                     "Enable early termination for integer motion search")
+  ("FastSubPel",                                      m_fastSubPel,                                     "Enable fast sub-pel ME (1: enable fast sub-pel ME, 2: completely disable sub-pel ME)")
   ;
 
   // Deblocking filter parameters
@@ -985,7 +984,7 @@ bool VVEncAppCfg::parseCfgFF( int argc, char* argv[] )
   ("FastForwardToPOC",                                m_fastForwardToPOC,                               "Get to encoding the specified POC as soon as possible by skipping temporal layers irrelevant for the specified POC." )
   ("StopAfterFFtoPOC",                                m_stopAfterFFtoPOC,                               "If using fast forward to POC, after the POC of interest has been hit, stop further encoding.")
   ("DecodeBitstream2ModPOCAndType",                   m_bs2ModPOCAndType,                               "Modify POC and NALU-type of second input bitstream, to use second BS as closing I-slice")
-  ("ForceDecodeBitstream1",                           m_forceDecodeBitstream1,                          "force decoding of bitstream 1 - use this only if you are realy sure about what you are doing ")
+  ("ForceDecodeBitstream1",                           m_forceDecodeBitstream1,                          "force decoding of bitstream 1 - use this only if you are really sure about what you are doing ")
   ;
 
   opts.setSubSection("Coding tools");
@@ -1002,8 +1001,8 @@ bool VVEncAppCfg::parseCfgFF( int argc, char* argv[] )
   ("DMVR",                                            m_DMVR,                                           "Decoder-side Motion Vector Refinement")
   ("EncDbOpt",                                        m_EDO,                                            "Encoder optimization with deblocking filter 0:off 1:vtm 2:fast")
   ("EDO",                                             m_EDO,                                            "Encoder optimization with deblocking filter 0:off 1:vtm 2:fast")
-  ("LMCSEnable",                                      m_lumaReshapeEnable,                              "Enable LMCS (luma mapping with chroma scaling")
-  ("LMCS",                                            m_lumaReshapeEnable,                              "Enable LMCS (luma mapping with chroma scaling")
+  ("LMCSEnable",                                      m_lumaReshapeEnable,                              "Enable LMCS luma mapping with chroma scaling (0:off 1:on 2:use SCC detection to disable for screen coded content)")
+  ("LMCS",                                            m_lumaReshapeEnable,                              "Enable LMCS luma mapping with chroma scaling (0:off 1:on 2:use SCC detection to disable for screen coded content)")
   ("LMCSSignalType",                                  m_reshapeSignalType,                              "Input signal type (0:SDR, 1:HDR-PQ, 2:HDR-HLG)")
   ("LMCSUpdateCtrl",                                  m_updateCtrl,                                     "LMCS model update control (0:RA, 1:AI, 2:LDB/LDP)")
   ("LMCSAdpOption",                                   m_adpOption,                                      "LMCS adaptation options: 0:automatic,"
@@ -1011,7 +1010,8 @@ bool VVEncAppCfg::parseCfgFF( int argc, char* argv[] )
                                                                                                              "3: rsp inter(CW66 for QP<=22), 4: rsp inter(for all QP).")
   ("LMCSInitialCW",                                   m_initialCW,                                      "LMCS initial total codeword (0~1023) when LMCSAdpOption > 0")
   ("LMCSOffset",                                      m_LMCSOffset,                                     "LMCS chroma residual scaling offset")
-  ("ALF",                                             m_alf,                                            "Adpative Loop Filter\n" )
+  ("ALF",                                             m_alf,                                            "Adpative Loop Filter" )
+  ("ALFSpeed",                                        m_alfSpeed,                                       "ALF speed (skip filtering of non-referenced frames) [0-1]" )
   ("CCALF",                                           m_ccalf,                                          "Cross-component Adaptive Loop Filter" )
   ("CCALFQpTh",                                       m_ccalfQpThreshold,                               "QP threshold above which encoder reduces CCALF usage. Ignored in case of PerceptQPA.")
   ("UseNonLinearAlfLuma",                             m_useNonLinearAlfLuma,                            "Non-linear adaptive loop filters for Luma Channel")
@@ -1025,6 +1025,7 @@ bool VVEncAppCfg::parseCfgFF( int argc, char* argv[] )
   ("MmvdDisNum",                                      m_MmvdDisNum,                                     "Number of MMVD Distance Entries")
   ("AllowDisFracMMVD",                                m_allowDisFracMMVD,                               "Disable fractional MVD in MMVD mode adaptively")
   ("MCTF",                                            m_vvencMCTF.MCTF,                                 "Enable GOP based temporal filter. (0:off, 1:filter all frames, 2:use SCC detection to disable for screen coded content)")
+  ("MCTFSpeed",                                       m_vvencMCTF.MCTFSpeed,                            "MCTF Fast Mode (0:best quality .. 4:fast)")
   ("MCTFFutureReference",                             m_vvencMCTF.MCTFFutureReference,                  "Enable referencing of future frames in the GOP based temporal filter. This is typically disabled for Low Delay configurations.")
   ("MCTFNumLeadFrames",                               m_vvencMCTF.MCTFNumLeadFrames,                    "Number of additional MCTF lead frames, which will not be encoded, but can used for MCTF filtering")
   ("MCTFNumTrailFrames",                              m_vvencMCTF.MCTFNumTrailFrames,                   "Number of additional MCTF trail frames, which will not be encoded, but can used for MCTF filtering")
@@ -1058,6 +1059,10 @@ bool VVEncAppCfg::parseCfgFF( int argc, char* argv[] )
   ("RPR",                                             m_rprEnabledFlag,                                 "Reference Sample Resolution (0: disable, 1: eneabled, 2: RPR ready")
   ("IBC",                                             m_IBCMode,                                        "IBC (0:off, 1:IBC, 2: IBC with SCC detection)")
   ("IBCFastMethod",                                   m_IBCFastMethod,                                  "Fast methods for IBC. 1:default, [2..6] speedups")
+  ("BCW",                                             m_BCW,                                            "Enable Generalized Bi-prediction(Bcw) 0: disabled, 1: enabled, 2: fast")
+  ("FastInferMerge",                                  m_FIMMode,                                        "Fast method to skip Inter/Intra modes. 0: off, [1..4] speedups")
+  ("NumIntraModesFullRD",                             m_numIntraModesFullRD,                            "Number modes for full RD intra search [-1, 1..3] (default: -1 auto)")
+  ("ReduceIntraChromaModesFullRD",                    m_reduceIntraChromaModesFullRD,                   "Reduce modes for chroma full RD intra search")
   ;
 
   opts.setSubSection("Input options");
@@ -1072,7 +1077,7 @@ bool VVEncAppCfg::parseCfgFF( int argc, char* argv[] )
   opts.setSubSection("Reconstructed video options");
   opts.addOptions()
   ("ClipOutputVideoToRec709Range",                    m_bClipOutputVideoToRec709Range,                  "Enable clipping output video to the Rec. 709 Range on saving when OutputBitDepth is less than InternalBitDepth")
-  ("PYUV",                                            m_packedYUVMode,                                  "Enable output 10-bit and 12-bit YUV data as 5-byte and 3-byte (respectively) packed YUV data. Ignored for interlaced output.")
+  ("PYUV",                                            m_packedYUVOutput,                                "Enable output 10-bit and 12-bit YUV data as 5-byte and 3-byte (respectively) packed YUV data. Ignored for interlaced output.")
     ;
 
 
@@ -1124,7 +1129,7 @@ bool VVEncAppCfg::parseCfgFF( int argc, char* argv[] )
   //
   // parse command line parameters and read configuration files
   //
-    
+
   po::setDefaults( opts );
   po::ErrorReporter err;
   const list<const char*>& argv_unhandled = po::scanArgv( opts, argc, (const char**) argv, err );
@@ -1185,93 +1190,18 @@ bool VVEncAppCfg::parseCfgFF( int argc, char* argv[] )
     }
   }
 
-  //
-  // check own parameters
-  //
-
   if( m_showVersion )
   {
     return true;
   }
 
-  bool error = false;
-  if( m_bitstreamFileName.empty() )
-  {
-    cout <<  "error: A bitstream file name must be specified (BitstreamFile)" << std::endl;
-    error = true;
-  }
-  else
-  {
-    if( m_decodeBitstreams[0][0] != '\0' && m_decodeBitstreams[0] == m_bitstreamFileName )
-    {
-      cout <<  "error: Debug bitstream and the output bitstream cannot be equal" << std::endl;
-      error = true;
-    }
-    if( m_decodeBitstreams[1][0] != '\0' && m_decodeBitstreams[1] == m_bitstreamFileName )
-    {
-      cout <<  "error: Decode2 bitstream and the output bitstream cannot be equal" << std::endl;
-      error = true;
-    }
-  }
-
-  if( m_inputFileChromaFormat < 0 || m_inputFileChromaFormat >= VVENC_NUM_CHROMA_FORMAT )
-  {
-    cout <<  "error: Input chroma format must be either 400, 420, 422 or 444" << std::endl;
-    error = true;
-  }
-
-  if ( error )
-  {
-    return false;
-  }
-
-  if( m_decode )
-  {
-    return true;
-  }
-
-  //
-  // set intern derived parameters (for convenience purposes only)
-  //
-
+  // has to be set outside
   if ( m_internChromaFormat < 0 || m_internChromaFormat >= VVENC_NUM_CHROMA_FORMAT )
   {
     m_internChromaFormat = m_inputFileChromaFormat;
   }
 
-  if( m_RCNumPasses < 0 )
-  {
-    m_RCNumPasses = m_RCTargetBitrate > 0 ? 2 : 1;
-  }
-
-  if( m_packedYUVMode && ! m_reconFileName.empty() )  
-  {
-    if( ( m_outputBitDepth[ 0 ] != 10 && m_outputBitDepth[ 0 ] != 12 )
-        || ( ( ( m_SourceWidth ) & ( 1 + ( m_outputBitDepth[ 0 ] & 3 ) ) ) != 0 ) )
-    {
-      cout <<  "error: Invalid output bit-depth or image width for packed YUV output, aborting" << std::endl;
-      error = true;
-    }
-    if( ( m_internChromaFormat != VVENC_CHROMA_400 ) && ( ( m_outputBitDepth[ 1 ] != 10 && m_outputBitDepth[ 1 ] != 12 )
-          || ( ( vvenc_get_width_of_component( m_internChromaFormat, m_SourceWidth, 1 ) & ( 1 + ( m_outputBitDepth[ 1 ] & 3 ) ) ) != 0 ) ) )
-    {
-      cout <<  "error: Invalid chroma output bit-depth or image width for packed YUV output, aborting" << std::endl;
-      error = true;
-    }
-
-    if ( error )
-    {
-      return false;
-    }
-  }
-
-  const VVEncAppCfg* configPtr = this;
-  if ( vvenc_init_config_parameter((vvenc_config*)configPtr) )
-  {
-    return false;
-  }
-
-  return true;
+  return checkCfg();
 }
 
 std::string VVEncAppCfg::getConfigAsString( vvencMsgLevel eMsgLevel ) const
@@ -1282,6 +1212,7 @@ std::string VVEncAppCfg::getConfigAsString( vvencMsgLevel eMsgLevel ) const
     css << "Input          File                    : " << m_inputFileName << "\n";
     css << "Bitstream      File                    : " << m_bitstreamFileName << "\n";
     css << "Reconstruction File                    : " << m_reconFileName << "\n";
+    css << "RC Statistics  File                    : " << m_RCStatsFileName << "\n";
   }
 
   const VVEncAppCfg* configPtr = this;
@@ -1291,6 +1222,135 @@ std::string VVEncAppCfg::getConfigAsString( vvencMsgLevel eMsgLevel ) const
 
   return css.str();
 }
+
+bool VVEncAppCfg::checkCfg()
+{
+  bool ret = true;
+
+  // check bitstream file name in encode and decode mode
+  if( m_bitstreamFileName.empty() )
+  {
+    cout << "error: bitstream file name must be specified (--output=bit.266)" << std::endl;
+    ret = false;
+  }
+
+  // check remaining parameters in encode mode only
+  if( m_decode )
+  {
+    return ret;
+  }
+
+  // check internal config parameters and derive adapted parameter set
+  VVEncAppCfg appCfg = *this;
+  if( vvenc_init_config_parameter( &appCfg ) )
+  {
+    ret = false;
+  }
+
+  // check remaining parameter set
+  return appCfg.xCheckCfg();
+}
+
+bool VVEncAppCfg::xCheckCfg()
+{
+  bool ret = true;
+
+  if( m_inputFileName.empty() )
+  {
+    cout << "error: input yuv file name must be specified (--input=video.yuv)" << std::endl;
+    ret = false;
+  }
+  if( ! strcmp( m_inputFileName.c_str(), "-" )
+      && m_RCNumPasses > 1
+      && m_RCPass < 0 )
+  {
+    cout << "error: two pass rate control within single application call and reading from stdin not supported" << std::endl;
+    ret = false;
+  }
+
+  if( ! m_bitstreamFileName.empty() )
+  {
+    if( m_decodeBitstreams[0][0] != '\0' && m_decodeBitstreams[0] == m_bitstreamFileName )
+    {
+      cout << "error: debug bitstream and the output bitstream cannot be equal" << std::endl;
+      ret = false;
+    }
+    if( m_decodeBitstreams[1][0] != '\0' && m_decodeBitstreams[1] == m_bitstreamFileName )
+    {
+      cout << "error: decode2 bitstream and the output bitstream cannot be equal" << std::endl;
+      ret = false;
+    }
+  }
+
+#ifndef VVENC_ENABLE_THIRDPARTY_JSON
+  if( m_RCPass > 0 )
+  {
+    cout << "error: reading/writing rate control statistics file not supported, please disable pass parameter or compile with json enabled" << std::endl;
+    ret = false;
+  }
+  if( ! m_RCStatsFileName.empty() )
+  {
+    cout << "error: reading/writing rate control statistics file not supported, please disable rcstatsfile parameter or compile with json enabled" << std::endl;
+    ret = false;
+  }
+#endif
+
+  if( m_RCPass > 0 && m_RCStatsFileName.empty() )
+  {
+    cout << "error: rate control statistics file name must be specify, when pass parameter is set (--rcstatsfile=stats.json)" << std::endl;
+    ret = false;
+  }
+  if( m_RCNumPasses == 1 && ! m_RCStatsFileName.empty() )
+  {
+    cout << "error: rate control statistics file not supported in single pass encoding" << std::endl;
+    ret = false;
+  }
+
+  if( m_inputFileChromaFormat != VVENC_CHROMA_400 && m_inputFileChromaFormat != VVENC_CHROMA_420 )
+  {
+    cout << "error: input chroma format must be either 400, 420" << std::endl;
+    ret = false;
+  }
+
+  if( m_packedYUVInput )
+  {
+    if( vvenc_get_width_of_component( m_internChromaFormat, m_SourceWidth, 0 ) % 4 != 0 )
+    {
+      cout <<  "error: unsupported input width for packed input (width must be a multiple of 4)" << std::endl;
+      ret = false;
+    }
+
+    if( (m_internChromaFormat == VVENC_CHROMA_420 || m_internChromaFormat == VVENC_CHROMA_422) &&
+         vvenc_get_width_of_component( m_internChromaFormat, m_SourceWidth, 1 ) % 4 != 0 )
+    {
+      cout <<  "error: unsupported input width for packed input (chroma width must be a multiple of 4)" << std::endl;
+      ret = false;
+    }
+  }
+
+  if( m_packedYUVOutput && ! m_reconFileName.empty() )
+  {
+    // if output bitdepth not defined, use internal bitdepth as default value
+    if (m_outputBitDepth[0] == 0) m_outputBitDepth[0] = m_internalBitDepth[0];
+    if (m_outputBitDepth[1] == 0) m_outputBitDepth[1] = m_outputBitDepth[0];
+
+    if( ( m_outputBitDepth[ 0 ] != 10 && m_outputBitDepth[ 0 ] != 12 )
+        || ( ( ( m_SourceWidth ) & ( 1 + ( m_outputBitDepth[ 0 ] & 3 ) ) ) != 0 ) )
+    {
+      cout << "error: invalid output bit-depth or image width for packed YUV output" << std::endl;
+      ret = false;
+    }
+    if( ( m_internChromaFormat != VVENC_CHROMA_400 ) && ( ( m_outputBitDepth[ 1 ] != 10 && m_outputBitDepth[ 1 ] != 12 )
+          || ( ( vvenc_get_width_of_component( m_internChromaFormat, m_SourceWidth, 1 ) & ( 1 + ( m_outputBitDepth[ 1 ] & 3 ) ) ) != 0 ) ) )
+    {
+      cout << "error: invalid chroma output bit-depth or image width for packed YUV output" << std::endl;
+      ret = false;
+    }
+  }
+
+  return ret;
+}
+
 
 } // namespace
 
