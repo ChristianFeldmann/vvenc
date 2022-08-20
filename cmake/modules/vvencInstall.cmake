@@ -82,9 +82,9 @@ else()
 endif()
 
 # create target cmake files
-install( EXPORT vvencTargets-release        NAMESPACE vvenc:: FILE vvencTargets-${CONFIG_POSTFIX}.cmake CONFIGURATIONS Release        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vvenc )
-install( EXPORT vvencTargets-debug          NAMESPACE vvenc:: FILE vvencTargets-${CONFIG_POSTFIX}.cmake CONFIGURATIONS Debug          DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vvenc )
-install( EXPORT vvencTargets-relwithdebinfo NAMESPACE vvenc:: FILE vvencTargets-${CONFIG_POSTFIX}.cmake CONFIGURATIONS RelWithDebInfo DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vvenc )
+# install( EXPORT vvencTargets-release        NAMESPACE vvenc:: FILE vvencTargets-${CONFIG_POSTFIX}.cmake CONFIGURATIONS Release        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vvenc )
+# install( EXPORT vvencTargets-debug          NAMESPACE vvenc:: FILE vvencTargets-${CONFIG_POSTFIX}.cmake CONFIGURATIONS Debug          DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vvenc )
+#  install( EXPORT vvencTargets-relwithdebinfo NAMESPACE vvenc:: FILE vvencTargets-${CONFIG_POSTFIX}.cmake CONFIGURATIONS RelWithDebInfo DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vvenc )
 
 configure_file( pkgconfig/libvvenc.pc.in ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/libvvenc.pc @ONLY )
 install( FILES ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/libvvenc.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig )
