@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software,
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2019-2021, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V.
+Copyright (c) 2019-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -172,7 +168,7 @@ void IntraSearch::xEstimateLumaRdModeList(int& numModesForFullRD,
   static_vector<double, FAST_UDI_MAX_RDMODE_NUM>& CandCostList,
   static_vector<double, FAST_UDI_MAX_RDMODE_NUM>& CandHadList, CodingUnit& cu, bool testMip )
 {
-  PROFILER_SCOPE_AND_STAGE_EXT( 0, g_timeProfiler, P_INTRA_EST_RD_CAND_LUMA, cu.cs, CH_L );
+  PROFILER_SCOPE_AND_STAGE_EXT( 1, _TPROF, P_INTRA_EST_RD_CAND, cu.cs, CH_L );
   const uint16_t intra_ctx_size = Ctx::IntraLumaMpmFlag.size() + Ctx::IntraLumaPlanarFlag.size() + Ctx::MultiRefLineIdx.size() + Ctx::ISPMode.size() + Ctx::MipFlag.size();
   const TempCtx  ctxStartIntraCtx(m_CtxCache, SubCtx(CtxSet(Ctx::IntraLumaMpmFlag(), intra_ctx_size), m_CABACEstimator->getCtx()));
   const double   sqrtLambdaForFirstPass = m_pcRdCost->getMotionLambda() * FRAC_BITS_SCALE;
@@ -191,7 +187,8 @@ void IntraSearch::xEstimateLumaRdModeList(int& numModesForFullRD,
   const UnitArea localUnitArea(area.chromaFormat, Area(0, 0, area.width, area.height));
   if( testMip)
   {
-    numModesForFullRD += fastMip? std::max(numModesForFullRD, floorLog2(std::min(cu.lwidth(), cu.lheight())) - m_pcEncCfg->m_useFastMIP) : numModesForFullRD;
+    numModesForFullRD += fastMip ? numModesForFullRD - std::min( m_pcEncCfg->m_useFastMIP, numModesForFullRD )
+                                 : numModesForFullRD;
     m_SortedPelUnitBufs->prepare( localUnitArea, numModesForFullRD + 1 );
   }
   else
@@ -441,8 +438,8 @@ bool IntraSearch::estIntraPredLumaQT(CodingUnit &cu, Partitioner &partitioner, d
 #endif
   const SPS& sps = *cu.cs->sps;
   const bool mipAllowed = sps.MIP && cu.lwidth() <= sps.getMaxTbSize() && cu.lheight() <= sps.getMaxTbSize() && ((cu.lfnstIdx == 0) || allowLfnstWithMip(cu.lumaSize()));
-  const int SizeThr = 8>>std::max(0,m_pcEncCfg->m_useFastMIP-2);
-  const bool testMip    = mipAllowed && (cu.lwidth() <= (SizeThr * cu.lheight()) && cu.lheight() <= (SizeThr * cu.lwidth())) && (cu.lwidth() <= MIP_MAX_WIDTH && cu.lheight() <= MIP_MAX_HEIGHT);
+  const int SizeThr     = 8 >> std::max( 0, m_pcEncCfg->m_useFastMIP - 1 );
+  const bool testMip    = mipAllowed && ( cu.lwidth() <= ( SizeThr * cu.lheight() ) && cu.lheight() <= ( SizeThr * cu.lwidth() ) ) && ( cu.lwidth() <= MIP_MAX_WIDTH && cu.lheight() <= MIP_MAX_HEIGHT );
   bool testISP = sps.ISP && CU::canUseISP(width, height, cu.cs->sps->getMaxTbSize());
   if (testISP)
   {
@@ -471,7 +468,8 @@ bool IntraSearch::estIntraPredLumaQT(CodingUnit &cu, Partitioner &partitioner, d
   // after this point, don't use numModesForFullRD
   if( m_pcEncCfg->m_usePbIntraFast && !cs.slice->isIntra() && RdModeList.size() < numModesAvailable && !cs.slice->disableSATDForRd )
   {
-    double pbintraRatio = PBINTRA_RATIO;
+    double pbintraRatio = m_pcEncCfg->m_usePbIntraFast == 1 && ( cs.area.lwidth() >= 16 && cs.area.lheight() >= 16 ) ? 1.2 : PBINTRA_RATIO;
+
     int maxSize = -1;
     ModeInfo bestMipMode;
     int bestMipIdx = -1;
@@ -717,7 +715,7 @@ bool IntraSearch::estIntraPredLumaQT(CodingUnit &cu, Partitioner &partitioner, d
 
 void IntraSearch::estIntraPredChromaQT( CodingUnit& cu, Partitioner& partitioner, const double maxCostAllowed )
 {
-  PROFILER_SCOPE_AND_STAGE_EXT( 0, g_timeProfiler, P_INTRA_CHROMA, cu.cs, CH_C );
+  PROFILER_SCOPE_AND_STAGE_EXT( 0, _TPROF, P_INTRA_CHROMA, cu.cs, CH_C );
   const TempCtx ctxStart( m_CtxCache, m_CABACEstimator->getCtx() );
   CodingStructure &cs   = *cu.cs;
   bool lumaUsesISP      = !CU::isSepTree(cu) && cu.ispMode;
@@ -1495,7 +1493,7 @@ void IntraSearch::xIntraCodingTUBlock(TransformUnit &tu, const ComponentID compI
 
 void IntraSearch::xIntraCodingLumaQT(CodingStructure& cs, Partitioner& partitioner, PelUnitBuf* predBuf, const double bestCostSoFar, int numMode, bool disableMTS)
 {
-  PROFILER_SCOPE_AND_STAGE_EXT( 0, g_timeProfiler, P_INTRA_RD_SEARCH_LUMA, &cs, partitioner.chType );
+  PROFILER_SCOPE_AND_STAGE_EXT( 0, _TPROF, P_INTRA_RD_SEARCH_LUMA, &cs, partitioner.chType );
   const UnitArea& currArea  = partitioner.currArea();
   uint32_t        currDepth = partitioner.currTrDepth;
   Distortion singleDistLuma = 0;
@@ -1517,7 +1515,7 @@ void IntraSearch::xIntraCodingLumaQT(CodingStructure& cs, Partitioner& partition
     endLfnstIdx = 0;
   }
   int bestMTS = 0;
-  int EndMTS  = mtsAllowed ? m_pcEncCfg->m_MTSIntraMaxCand +1 : 0;
+  int EndMTS  = mtsAllowed ? m_pcEncCfg->m_MTSIntraMaxCand : 0;
   if (cu.ispMode && (EndMTS || endLfnstIdx))
   {
     EndMTS = 0;
@@ -2509,7 +2507,7 @@ ChromaCbfs IntraSearch::xIntraChromaCodingQT(CodingStructure& cs, Partitioner& p
         currTU.copyComponentFrom(tmpTU, COMP_Cr);
         m_CABACEstimator->getCtx() = ctxBest;
       }
-      currTU.jointCbCr = (TU::getCbf(currTU, COMP_Cb) | TU::getCbf(currTU, COMP_Cr)) ? bestJointCbCr : 0;
+      currTU.jointCbCr = (TU::getCbf(currTU, COMP_Cb) || TU::getCbf(currTU, COMP_Cr)) ? bestJointCbCr : 0;
     } // jointCbCr
 
     cs.dist += bestDistCbCr;

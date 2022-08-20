@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software,
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2019-2021, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V.
+Copyright (c) 2019-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -167,15 +163,69 @@ template<int signedMode> void invTransformCbCr( PelBuf& resCb, PelBuf& resCr )
   }
 }
 
+void xFwdLfnstNxNCore(int *src, int *dst, const uint32_t mode, const uint32_t index, const uint32_t size, int zeroOutSize)
+{
+  const int8_t *trMat  = (size > 4) ? g_lfnstFwd8x8[mode][index][0] : g_lfnstFwd4x4[mode][index][0];
+  const int     trSize = (size > 4) ? 48 : 16;
+  int           coef;
+  int *         out = dst;
+
+  for (int j = 0; j < zeroOutSize; j++)
+  {
+    int *         srcPtr   = src;
+    const int8_t *trMatTmp = trMat;
+    coef                   = 0;
+    for (int i = 0; i < trSize; i++)
+    {
+      coef += *srcPtr++ * *trMatTmp++;
+    }
+    *out++ = (coef + 64) >> 7;
+    trMat += trSize;
+  }
+
+  ::memset(out, 0, (trSize - zeroOutSize) * sizeof(int));
+}
+
+
+void xInvLfnstNxNCore(int *src, int *dst, const uint32_t mode, const uint32_t index, const uint32_t size, int zeroOutSize)
+{
+  int           maxLog2TrDynamicRange = 15;
+  const TCoeff  outputMinimum         = -(1 << maxLog2TrDynamicRange);
+  const TCoeff  outputMaximum         = (1 << maxLog2TrDynamicRange) - 1;
+  const int8_t *trMat                 = (size > 4) ? g_lfnstInv8x8[mode][index][0] : g_lfnstInv4x4[mode][index][0];
+  const int     trSize                = (size > 4) ? 48 : 16;
+  int           resi;
+  int *         out                   = dst;
+
+  for( int j = 0; j < trSize; j++, trMat += 16 )
+  {
+    resi = 0;
+    const int8_t* trMatTmp = trMat;
+    int*          srcPtr   = src;
+
+    for( int i = 0; i < zeroOutSize; i++ )
+    {
+      resi += *srcPtr++ * *trMatTmp++;
+    }
+
+    *out++ = Clip3( outputMinimum, outputMaximum, ( int ) ( resi + 64 ) >> 7 );
+  }
+}
+
 // ====================================================================================================================
 // TrQuant class member functions
 // ====================================================================================================================
 TrQuant::TrQuant() : m_scalingListEnabled(false), m_quant( nullptr )
 {
   // allocate temporary buffers
-  m_plTempCoeff = ( TCoeff* ) xMalloc( TCoeff, MAX_CU_SIZE * MAX_CU_SIZE );
-  m_tmp         = ( TCoeff* ) xMalloc( TCoeff, MAX_CU_SIZE * MAX_CU_SIZE );
-  m_blk         = ( TCoeff* ) xMalloc( TCoeff, MAX_CU_SIZE * MAX_CU_SIZE );
+  m_plTempCoeff = ( TCoeff* ) xMalloc( TCoeff, MAX_TB_SIZEY * MAX_TB_SIZEY );
+  m_tmp         = ( TCoeff* ) xMalloc( TCoeff, MAX_TB_SIZEY * MAX_TB_SIZEY );
+  m_blk         = ( TCoeff* ) xMalloc( TCoeff, MAX_TB_SIZEY * MAX_TB_SIZEY );
+
+  for( int i = 0; i < NUM_TRAFO_MODES_MTS; i++ )
+  {
+    m_mtsCoeffs[i] = ( TCoeff* ) xMalloc( TCoeff, MAX_TB_SIZEY * MAX_TB_SIZEY );
+  }
 
   {
     m_invICT      = m_invICTMem + maxAbsIctMode;
@@ -195,6 +245,13 @@ TrQuant::TrQuant() : m_scalingListEnabled(false), m_quant( nullptr )
     m_fwdICT[ 3]  = fwdTransformCbCr< 3>;
     m_fwdICT[-3]  = fwdTransformCbCr<-3>;
   }
+
+  m_invLfnstNxN = xInvLfnstNxNCore;
+  m_fwdLfnstNxN = xFwdLfnstNxNCore;
+
+#if defined( TARGET_SIMD_X86 ) && ENABLE_SIMD_TRAFO
+  initTrQuantX86();
+#endif
 }
 
 TrQuant::~TrQuant()
@@ -223,6 +280,11 @@ TrQuant::~TrQuant()
     xFree( m_tmp );
     m_tmp = nullptr;
   }
+
+  for( int i = 0; i < NUM_TRAFO_MODES_MTS; i++ )
+  {
+     xFree( m_mtsCoeffs[i] );
+  }
 }
 
 void TrQuant::xDeQuant(const TransformUnit& tu,
@@ -230,7 +292,7 @@ void TrQuant::xDeQuant(const TransformUnit& tu,
                        const ComponentID   &compID,
                        const QpParam       &cQP)
 {
-  PROFILER_SCOPE_AND_STAGE( 1, g_timeProfiler, P_QUANT );
+  PROFILER_SCOPE_AND_STAGE( 1, _TPROF, P_QUANT );
   m_quant->dequant( tu, dstCoeff, compID, cQP );
 }
 
@@ -444,7 +506,7 @@ void TrQuant::xSetTrTypes( const TransformUnit& tu, const ComponentID compID, co
 
 void TrQuant::xT( const TransformUnit& tu, const ComponentID compID, const CPelBuf& resi, CoeffBuf& dstCoeff, const int width, const int height )
 {
-  PROFILER_SCOPE_AND_STAGE( 1, g_timeProfiler, P_TRAFO );
+  PROFILER_SCOPE_AND_STAGE( 1, _TPROF, P_TRAFO );
 
   const unsigned maxLog2TrDynamicRange  = tu.cs->sps->getMaxLog2TrDynamicRange( toChannelType( compID ) );
   const unsigned bitDepth               = tu.cs->sps->bitDepths[               toChannelType( compID ) ];
@@ -530,7 +592,7 @@ void TrQuant::xT( const TransformUnit& tu, const ComponentID compID, const CPelB
 
 void TrQuant::xIT( const TransformUnit& tu, const ComponentID compID, const CCoeffBuf& pCoeff, PelBuf& pResidual )
 {
-  PROFILER_SCOPE_AND_STAGE( 1, g_timeProfiler, P_TRAFO );
+  PROFILER_SCOPE_AND_STAGE( 1, _TPROF, P_TRAFO );
 
   const int      width                  = pCoeff.width;
   const int      height                 = pCoeff.height;
@@ -642,7 +704,7 @@ void TrQuant::xITransformSkip(const CCoeffBuf& pCoeff,
 
 void TrQuant::xQuant(TransformUnit& tu, const ComponentID compID, const CCoeffBuf& pSrc, TCoeff &uiAbsSum, const QpParam& cQP, const Ctx& ctx)
 {
-  PROFILER_SCOPE_AND_STAGE_EXT( 1, g_timeProfiler, P_QUANT, tu.cs, toChannelType(compID) );
+  PROFILER_SCOPE_AND_STAGE( 1, _TPROF, P_QUANT );
   m_quant->quant( tu, compID, pSrc, uiAbsSum, cQP, ctx );
 #if ENABLE_MEASURE_SEARCH_SPACE
 
@@ -762,64 +824,10 @@ void TrQuant::checktransformsNxN( TransformUnit &tu, std::vector<TrMode> *trMode
   const double                  thrTS    = trCosts.begin()->first;
   while (itC != trCosts.end())
   {
-    const bool testTr               = itC->first <= (itC->second == 1 ? thrTS : thr) && numTests <= maxCand;
+    const bool testTr               = itC->first <= (trModes->at(itC->second).first == 1 ? thrTS : thr) && numTests <= maxCand;
     trModes->at(itC->second).second = testTr;
     numTests += testTr;
     itC++;
-  }
-}
-
-
-void TrQuant::xFwdLfnstNxN(int *src, int *dst, const uint32_t mode, const uint32_t index, const uint32_t size, int zeroOutSize)
-{
-  const int8_t *trMat  = (size > 4) ? g_lfnst8x8[mode][index][0] : g_lfnst4x4[mode][index][0];
-  const int     trSize = (size > 4) ? 48 : 16;
-  int           coef;
-  int *         out = dst;
-
-  assert(index < 3);
-
-  for (int j = 0; j < zeroOutSize; j++)
-  {
-    int *         srcPtr   = src;
-    const int8_t *trMatTmp = trMat;
-    coef                   = 0;
-    for (int i = 0; i < trSize; i++)
-    {
-      coef += *srcPtr++ * *trMatTmp++;
-    }
-    *out++ = (coef + 64) >> 7;
-    trMat += trSize;
-  }
-
-  ::memset(out, 0, (trSize - zeroOutSize) * sizeof(int));
-}
-
-
-void TrQuant::xInvLfnstNxN(int *src, int *dst, const uint32_t mode, const uint32_t index, const uint32_t size, int zeroOutSize)
-{
-  int           maxLog2TrDynamicRange = 15;
-  const TCoeff  outputMinimum         = -(1 << maxLog2TrDynamicRange);
-  const TCoeff  outputMaximum         = (1 << maxLog2TrDynamicRange) - 1;
-  const int8_t *trMat                 = (size > 4) ? g_lfnst8x8[mode][index][0] : g_lfnst4x4[mode][index][0];
-  const int     trSize                = (size > 4) ? 48 : 16;
-  int           resi;
-  int *         out = dst;
-
-  assert(index < 3);
-
-  for (int j = 0; j < trSize; j++)
-  {
-    resi                   = 0;
-    const int8_t *trMatTmp = trMat;
-    int *         srcPtr   = src;
-    for (int i = 0; i < zeroOutSize; i++)
-    {
-      resi += *srcPtr++ * *trMatTmp;
-      trMatTmp += trSize;
-    }
-    *out++ = Clip3(outputMinimum, outputMaximum, (int) (resi + 64) >> 7);
-    trMat++;
   }
 }
 
@@ -906,8 +914,7 @@ void TrQuant::xInvLfnst(const TransformUnit &tu, const ComponentID compID)
         scanPtr++;
       }
 
-      xInvLfnstNxN(m_tempInMatrix, m_tempOutMatrix, g_lfnstLut[intraMode], lfnstIdx - 1, sbSize,
-                  (tu4x4Flag || tu8x8Flag) ? 8 : 16);
+      m_invLfnstNxN( m_tempInMatrix, m_tempOutMatrix, g_lfnstLut[intraMode], lfnstIdx - 1, sbSize, ( tu4x4Flag || tu8x8Flag ) ? 8 : 16 );
 
       lfnstTemp = m_tempOutMatrix;   // inverse spectral rearrangement
 
@@ -1053,8 +1060,7 @@ void TrQuant::xFwdLfnst(const TransformUnit &tu, const ComponentID compID, const
         }
       }
 
-      xFwdLfnstNxN(m_tempInMatrix, m_tempOutMatrix, g_lfnstLut[intraMode], lfnstIdx - 1, sbSize,
-                  (tu4x4Flag || tu8x8Flag) ? 8 : 16);
+      m_fwdLfnstNxN( m_tempInMatrix, m_tempOutMatrix, g_lfnstLut[intraMode], lfnstIdx - 1, sbSize, ( tu4x4Flag || tu8x8Flag ) ? 8 : 16 );
 
       lfnstTemp                        = m_tempOutMatrix;   // forward spectral rearrangement
       coeffTemp                        = tempCoeff;

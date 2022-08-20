@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software,
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2019-2021, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V.
+Copyright (c) 2019-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -313,7 +309,38 @@ void HLSWriter::codePPS( const PPS* pcPPS, const SPS* pcSPS )
 
   if( !pcPPS->noPicPartition )
   {
-    THROW("no suppport");
+    WRITE_CODE( pcPPS->log2CtuSize - 5, 2, "pps_log2_ctu_size_minus5" );
+    WRITE_UVLC( pcPPS->numExpTileCols - 1, "pps_num_exp_tile_columns_minus1" );
+    WRITE_UVLC( pcPPS->numExpTileRows - 1, "pps_num_exp_tile_rows_minus1" );
+
+    for( int colIdx = 0; colIdx < pcPPS->numExpTileCols; colIdx++ )
+    {
+      WRITE_UVLC( pcPPS->tileColWidth[ colIdx ] - 1,    "pps_tile_column_width_minus1[i]" );
+    }
+    for( int rowIdx = 0; rowIdx < pcPPS->numExpTileRows; rowIdx++ )
+    {
+      WRITE_UVLC( pcPPS->tileRowHeight[ rowIdx ] - 1,   "pps_tile_row_height_minus1[i]" );
+    }
+
+    if( pcPPS->numTileCols * pcPPS->numTileRows > 1 )
+    {
+      WRITE_FLAG( pcPPS->loopFilterAcrossTilesEnabled,  "pps_loop_filter_across_tiles_enabled_flag" );
+      WRITE_FLAG( pcPPS->rectSlice ? 1 : 0,             "pps_rect_slice_flag" );
+    }
+    if( pcPPS->rectSlice )
+    {
+      WRITE_FLAG( pcPPS->singleSlicePerSubPic ? 1 : 0,  "pps_single_slice_per_subpic_flag" );
+    }
+    if( pcPPS->rectSlice & !pcPPS->singleSlicePerSubPic )
+    {
+      CHECK( pcPPS->numSlicesInPic > 1, "currently only one slice supported" );
+      WRITE_UVLC( pcPPS->numSlicesInPic - 1,            "pps_num_slices_in_pic_minus1" );
+    }
+
+    if( pcPPS->rectSlice == 0 || pcPPS->singleSlicePerSubPic || pcPPS->numSlicesInPic > 1 )
+    {
+      WRITE_FLAG( pcPPS->loopFilterAcrossSlicesEnabled, "pps_loop_filter_across_slices_enabled_flag" );
+    }
   }
 
   WRITE_FLAG( pcPPS->cabacInitPresent,                "pps_cabac_init_present_flag" );
@@ -482,10 +509,7 @@ void HLSWriter::codeAlfAps( const APS* pcAPS )
       CHECK(filterCount > MAX_NUM_CC_ALF_FILTERS, "CC ALF Filter count is too large");
       CHECK(filterCount == 0,                     "CC ALF Filter count is too small");
 
-      if (MAX_NUM_CC_ALF_FILTERS > 1)
-      {
-        WRITE_UVLC(filterCount - 1, ccIdx == 0 ? "alf_cc_cb_filters_signalled_minus1" : "alf_cc_cr_filters_signalled_minus1");
-      }
+      WRITE_UVLC(filterCount - 1, ccIdx == 0 ? "alf_cc_cb_filters_signalled_minus1" : "alf_cc_cr_filters_signalled_minus1");
 
       for (int filterIdx = 0; filterIdx < filterCount; filterIdx++)
       {
@@ -987,17 +1011,17 @@ void HLSWriter::codeSPS( const SPS* pcSPS )
 
   if (pcSPS->ptlDpbHrdParamsPresent)
   {
-    WRITE_FLAG(pcSPS->hrdParametersPresent,               "sps_general_hrd_params_present_flag");
+    WRITE_FLAG(pcSPS->hrdParametersPresent,               "sps_timing_hrd_params_present_flag");
 
     if( pcSPS->hrdParametersPresent )
     {
-    codeGeneralHrdparameters(&pcSPS->generalHrdParams);
-    if ((pcSPS->maxTLayers - 1) > 0)
-    {
-      WRITE_FLAG(pcSPS->subLayerParametersPresent, "sps_sublayer_cpb_params_present_flag");
-    }
-    uint32_t firstSubLayer = pcSPS->subLayerParametersPresent ? 0 : (pcSPS->maxTLayers - 1);
-    codeOlsHrdParameters(&pcSPS->generalHrdParams, pcSPS->olsHrdParams, firstSubLayer, pcSPS->maxTLayers - 1);
+      codeGeneralHrdparameters(&pcSPS->generalHrdParams);
+      if ((pcSPS->maxTLayers - 1) > 0)
+      {
+        WRITE_FLAG(pcSPS->subLayerParametersPresent,      "sps_sublayer_cpb_params_present_flag");
+      }
+      uint32_t firstSubLayer = pcSPS->subLayerParametersPresent ? 0 : (pcSPS->maxTLayers - 1);
+      codeOlsHrdParameters(&pcSPS->generalHrdParams, pcSPS->olsHrdParams, firstSubLayer, pcSPS->maxTLayers - 1);
     }
   }
 
@@ -1755,42 +1779,42 @@ void HLSWriter::codeSliceHeader( const Slice* slice )
 
   if (slice->sps->alfEnabled && !slice->pps->alfInfoInPh)
   {
-    const int alfEnabled = slice->tileGroupAlfEnabled[COMP_Y];
+    const int alfEnabled = slice->alfEnabled[COMP_Y];
     WRITE_FLAG(alfEnabled, "sh_alf_enabled_flag");
 
     if (alfEnabled)
     {
-      WRITE_CODE(slice->tileGroupNumAps, 3, "sh_num_alf_aps_ids_luma");
-      for (int i = 0; i < slice->tileGroupNumAps; i++)
+      WRITE_CODE(slice->numAps, 3, "sh_num_alf_aps_ids_luma");
+      for (int i = 0; i < slice->numAps; i++)
       {
-        WRITE_CODE(slice->tileGroupLumaApsId[i], 3, "sh_alf_aps_id_luma");
+        WRITE_CODE(slice->lumaApsId[i], 3, "sh_alf_aps_id_luma");
       }
 
-      const int alfChromaIdc = slice->tileGroupAlfEnabled[COMP_Cb] + slice->tileGroupAlfEnabled[COMP_Cr] * 2;
+      const int alfChromaIdc = slice->alfEnabled[COMP_Cb] + slice->alfEnabled[COMP_Cr] * 2;
       if (chromaEnabled)
       {
-        WRITE_FLAG(slice->tileGroupAlfEnabled[COMP_Cb], "sh_alf_cb_enabled_flag");
-        WRITE_FLAG(slice->tileGroupAlfEnabled[COMP_Cr], "sh_alf_cr_enabled_flag");
+        WRITE_FLAG(slice->alfEnabled[COMP_Cb], "sh_alf_cb_enabled_flag");
+        WRITE_FLAG(slice->alfEnabled[COMP_Cr], "sh_alf_cr_enabled_flag");
       }
       if (alfChromaIdc)
       {
-        WRITE_CODE(slice->tileGroupChromaApsId, 3,      "sh_alf_aps_id_chroma");
+        WRITE_CODE(slice->chromaApsId, 3,      "sh_alf_aps_id_chroma");
       }
 
       if (slice->sps->ccalfEnabled)
       {
-        WRITE_FLAG(slice->tileGroupCcAlfCbEnabled,      "sh_cc_alf_cb_enabled_flag");
-        if( slice->tileGroupCcAlfCbEnabled )
+        WRITE_FLAG(slice->ccAlfCbEnabled,      "sh_cc_alf_cb_enabled_flag");
+        if( slice->ccAlfCbEnabled )
         {
           // write CC ALF Cb APS ID
-          WRITE_CODE(slice->tileGroupCcAlfCbApsId, 3,   "sh_cc_alf_cb_aps_id");
+          WRITE_CODE(slice->ccAlfCbApsId, 3,   "sh_cc_alf_cb_aps_id");
         }
         // Cr
-        WRITE_FLAG(slice->tileGroupCcAlfCrEnabled,      "sh_cc_alf_cr_enabled_flag");
-        if( slice->tileGroupCcAlfCrEnabled )
+        WRITE_FLAG(slice->ccAlfCrEnabled,      "sh_cc_alf_cr_enabled_flag");
+        if( slice->ccAlfCrEnabled )
         {
           // write CC ALF Cr APS ID
-          WRITE_CODE(slice->tileGroupCcAlfCrApsId, 3,   "sh_cc_alf_cr_aps_id");
+          WRITE_CODE(slice->ccAlfCrApsId, 3,   "sh_cc_alf_cr_aps_id");
         }
       }
     }
@@ -2010,9 +2034,9 @@ void HLSWriter::codeSliceHeader( const Slice* slice )
   {
     if (slice->pps->deblockingFilterOverrideEnabled )
     {
-      WRITE_FLAG(slice->deblockingFilterOverrideFlag, "sh_deblocking_params_present_flag");
+      WRITE_FLAG(slice->deblockingFilterOverride, "sh_deblocking_params_present_flag");
     }
-    if (slice->deblockingFilterOverrideFlag)
+    if (slice->deblockingFilterOverride)
     {
       if (!slice->pps->deblockingFilterDisabled)
       {

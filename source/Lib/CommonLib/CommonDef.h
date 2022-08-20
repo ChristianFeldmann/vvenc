@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software,
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2019-2021, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V.
+Copyright (c) 2019-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -104,7 +100,7 @@ THE POSSIBILITY OF SUCH DAMAGE.
 #define SIMD_PREFETCH_T0(_s)
 #endif //ENABLE_SIMD_OPT
 
-#ifdef _WIN32
+#if defined( _WIN32 )
 # include <intrin.h>
 #else
 # include <x86intrin.h>
@@ -197,6 +193,16 @@ static const int MAX_QP =                                          63;
 static const int MAX_QP_PERCEPT_QPA =                              42; ///< max. base QP up to which CTU or sub-CTU QPA is used instead of frame QPA
 static const int NOT_VALID =                                       -1;
 
+typedef enum
+{
+  PREV_FRAME_1    = 0,
+  PREV_FRAME_2    = 1,
+  PREV_FRAME_TL0  = 2,
+} PrevFrameType;
+
+static const int QPA_PREV_FRAMES =              (int)PREV_FRAME_2 + 1;
+static const int NUM_PREV_FRAMES =            (int)PREV_FRAME_TL0 + 1;
+
 
 static const int AMVP_MAX_NUM_CANDS =                               2; ///< AMVP: advanced motion vector prediction - max number of final candidates
 static const int AMVP_MAX_NUM_CANDS_MEM =                           3; ///< AMVP: advanced motion vector prediction - max number of candidates
@@ -266,9 +272,8 @@ static const int MAX_NUM_APS =                                     32;  //Curren
 static const int NUM_APS_TYPE_LEN =                                 3;  //Currently APS Type has 3 bits
 static const int MAX_NUM_APS_TYPE =                                 8;  //Currently APS Type has 3 bits so the max type is 8
 
-static const int MAX_TILE_COLS =                                   20;  ///< Maximum number of tile columns
-static const int MAX_TILE_ROWS =                                   22;  ///< Maximum number of tile rows
-static const int MAX_TILES =            MAX_TILE_COLS * MAX_TILE_ROWS;  ///< Maximum number of tiles
+static const int MAX_TILE_COLS =                                   30;  ///< Maximum number of tile columns
+static const int MAX_TILES =                                      990;  ///< Maximum number of tiles
 static const int MAX_SLICES =                                     600;  ///< Maximum number of slices per picture
 static const int MLS_GRP_NUM =                                    256; ///< Max number of coefficient groups, max(16, 256)
 
@@ -452,6 +457,10 @@ static const int    NUM_AMAXBT_LAYER =                             10;
 static const double AMAXBT_TH32 =                                  15.0;
 static const double AMAXBT_TH64 =                                  30.0;
 
+// Threshholds for Fast Chroma Block Partitoning. Only used in Intra Only Coding
+static const int    FCBP_TH1 =                                     18000;
+static const int    FCBP_TH2 =                                     105;
+
 // need to know for static memory allocation
 static const int MAX_DELTA_QP   =                                   7;      ///< maximum supported delta QP value
 static const int MAX_TESTED_QPs =   ( 1 + 1 + ( MAX_DELTA_QP << 1 ) );      ///< dqp=0 +- max_delta_qp + lossless mode
@@ -587,23 +596,13 @@ template <typename T> inline void Check3( T minVal, T maxVal, T a)
   CHECK( ( a > maxVal ) || ( a < minVal ), "ERROR: Range check " << minVal << " >= " << a << " <= " << maxVal << " failed" );
 }  ///< general min/max clip
 
+// global logger message callback function - DEPRECATED - will be removed in next major version
 extern std::function<void( void*, int, const char*, va_list )> g_msgFnc;
-extern void * m_msgFncCtx;
+extern void * g_msgFncCtx;
+// end global logger 
 
-inline void msg( int level, const char* fmt, ... )
-{
-  if ( g_msgFnc )
-  {
-    static std::mutex _msgMutex;
-    std::unique_lock<std::mutex> _lock( _msgMutex );
-    va_list args;
-    va_start( args, fmt );
-    g_msgFnc( m_msgFncCtx, level, fmt, args );
-    va_end( args );
-  }
-}
 
-inline std::string print( const char* fmt, ...)
+inline std::string prnt( const char* fmt, ...)
 {
   va_list argptr;
 
@@ -706,21 +705,30 @@ const char* read_x86_extension(const std::string &extStrId);
 template <typename ValueType> inline ValueType leftShiftU  (const ValueType value, const unsigned shift) { return value << shift; }
 template <typename ValueType> inline ValueType rightShiftU (const ValueType value, const unsigned shift) { return value >> shift; }
 
-#ifdef TARGET_SIMD_X86
-#ifdef _WIN32
-static inline unsigned long _bit_scan_reverse( long a )
+#if defined( _WIN32 ) && defined( TARGET_SIMD_X86 )
+static inline unsigned int bit_scan_reverse( int a )
 {
   unsigned long idx = 0;
   _BitScanReverse( &idx, a );
   return idx;
 }
-#endif
-
-static inline int floorLog2( uint32_t x )
+// disabled because it requires x86intrin.h which conflicts with simd-everywhere
+// #elif defined( __GNUC__ ) && defined( TARGET_SIMD_X86 ) && !defined( REAL_TARGET_WASM )
+// static inline unsigned int bit_scan_reverse( int a )
+// {
+//   return _bit_scan_reverse( a );
+// }
+#elif defined( __GNUC__ )
+static inline unsigned int bit_scan_reverse( int a )
 {
-  return ( int ) _bit_scan_reverse( x );
+  return __builtin_clz( a ) ^ ( 8 * sizeof( a ) - 1 );
 }
-
+#endif
+#if ENABLE_SIMD_LOG2
+static inline int floorLog2( int val )
+{
+  return bit_scan_reverse( val );
+}
 #else
 static inline int floorLog2(uint32_t x)
 {

@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software,
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2019-2021, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V.
+Copyright (c) 2019-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -57,6 +53,7 @@ THE POSSIBILITY OF SUCH DAMAGE.
 #include <fstream>
 #include <cstring>
 #include <vector>
+#include <tuple>
 
 #include "vvenc/version.h"
 #include "vvenc/vvenc.h"
@@ -73,6 +70,7 @@ int testLibCallingOrder();     // check invalid caling order
 int testLibParameterRanges();  // single parameter rangewew checks 
 int testInvalidInputParams();  // input Buffer does not match
 int testSDKDefaultBehaviour(); // check default behaviour when using in sdk
+int testStringApiInterface(); // check behaviour when using in sdk by using string api
 
 int main( int argc, char* argv[] )
 {
@@ -87,12 +85,12 @@ int main( int argc, char* argv[] )
     else
     {
       testId = atoi(argv[1]);
-      printHelp = ( testId < 1 || testId > 4 );
+      printHelp = ( testId < 1 || testId > 5 );
     }
 
     if( printHelp )
     {
-      printf( "venclibtest <test> [1..4]\n");
+      printf( "venclibtest <test> [1..5]\n");
       return -1;
     }
   }
@@ -123,11 +121,17 @@ int main( int argc, char* argv[] )
     testSDKDefaultBehaviour();
     break;
   }
+  case 5:
+  {
+    testStringApiInterface();
+    break;
+  }
   default:
     testLibParameterRanges();
     testLibCallingOrder();
     testInvalidInputParams();
     testSDKDefaultBehaviour();
+    testStringApiInterface();
     break;
   }
 
@@ -158,7 +162,7 @@ void fillEncoderParameters( vvenc_config& rcEncCfg, bool callInitCfgParameter = 
   rcEncCfg.m_IntraPeriod                = 32;                  // intra period for IDR/CDR intra refresh/RAP flag (should be a factor of m_iGopSize)
   rcEncCfg.m_verbosity                  = VVENC_SILENT;              // log level > 4 (VERBOSE) enables psnr/rate output
   rcEncCfg.m_FrameRate                  = 60;                  // temporal rate (fps)
-//rcEncCfg.temporalScale                = 1;                   // temporal scale (fps)
+  rcEncCfg.m_FrameScale                 = 1;                   // temporal scale (fps)
   rcEncCfg.m_numThreads                 = 0;                   // number of worker threads (should not exceed the number of physical cpu's)
   rcEncCfg.m_usePerceptQPA              = true;                // perceptual QP adaptation (false: off, true: on)
   rcEncCfg.m_inputBitDepth[0]           = 8;                   // 8bit input
@@ -228,8 +232,8 @@ int testLibParameterRanges()
 
   fillEncoderParameters( vvencParams, false );
 
-  testParamList( "DecodingRefreshType",                    vvencParams.m_DecodingRefreshType,        vvencParams, { 1, 2, 4 } );
-  testParamList( "DecodingRefreshType",                    vvencParams.m_DecodingRefreshType,        vvencParams, { -1,0,3,5 }, true );
+  testParamList( "DecodingRefreshType",                    vvencParams.m_DecodingRefreshType,        vvencParams, { 1, 2, 4, 5 } );
+  testParamList( "DecodingRefreshType",                    vvencParams.m_DecodingRefreshType,        vvencParams, { -1,0,3,6 }, true );
 
   testParamList( "Level",                                  vvencParams.m_level,                      vvencParams, { 16,32,35,48,51,64,67,80,83,86,96,99,102,255 } );
   testParamList( "Level",                                  vvencParams.m_level,                      vvencParams, { 15,31,256, }, true );
@@ -249,7 +253,7 @@ int testLibParameterRanges()
   vvencParams.m_IntraPeriod = 1;
   testParamList( "GOPSize",                                vvencParams.m_GOPSize,                    vvencParams, { 1 } );
   vvencParams.m_IntraPeriod = 32;
-  testParamList( "GOPSize",                                vvencParams.m_GOPSize,                    vvencParams, { 1,8, -1,0,2,3,4,17,33,64,128 }, true ); //th is this intended
+  testParamList( "GOPSize",                                vvencParams.m_GOPSize,                    vvencParams, { -1,0,33,64,128 }, true ); //th is this intended
 
   testParamList( "Width",                                  vvencParams.m_SourceWidth,                vvencParams, { 320,1920,3840 } );
   testParamList( "Width",                                  vvencParams.m_SourceWidth,                vvencParams, { -1,0 }, true );
@@ -257,8 +261,8 @@ int testLibParameterRanges()
   testParamList( "Height",                                 vvencParams.m_SourceHeight,               vvencParams, { 16,32,1080,1088 } );
   testParamList( "Height",                                 vvencParams.m_SourceHeight,               vvencParams, { -1,0 }, true );
 
-  testParamList( "IDRPeriod",                              vvencParams.m_IntraPeriod,                vvencParams, { 16,32,48, 0 } );
-  testParamList( "IDRPeriod",                              vvencParams.m_IntraPeriod,                vvencParams, { 1,-1,17,24 }, true );
+  testParamList( "IDRPeriod",                              vvencParams.m_IntraPeriod,                vvencParams, { -1,1,16,17,24,25,32,48,50,60, 0 } );
+  testParamList( "IDRPeriod",                              vvencParams.m_IntraPeriod,                vvencParams, { -2 }, true );
 
   testParamList( "Qp",                                     vvencParams.m_QP,                         vvencParams, { 0,1,2,3,4,51 } );
   testParamList( "Qp",                                     vvencParams.m_QP,                         vvencParams, { -1,64 }, true );
@@ -290,8 +294,21 @@ int testLibParameterRanges()
 //  vvencParams.temporalScale = 1001;
 //  testParamList( "TemporalRate",                           vvencParams.temporalRate,               vvencParams, { 24000,30000,60000 /*,1200000*/ } );
 //  testParamList( "TemporalRate",                           vvencParams.temporalRate,               vvencParams, { -1,1,0,24 }, true );
+  
+  vvencParams.m_SourceWidth        = 832;
+  vvencParams.m_SourceHeight       = 480;
+  testParamList<bool, bool>( "PicPartition",               vvencParams.m_picPartitionFlag,           vvencParams, { 1 } );
+  vvencParams.m_tileColumnWidth[0] = 5;
+  vvencParams.m_tileRowHeight[0]   = 3;
+  testParamList<bool, bool>( "PicPartition",               vvencParams.m_picPartitionFlag,           vvencParams, { 1 } );
+  vvencParams.m_tileColumnWidth[0] = 4;
+  vvencParams.m_tileRowHeight[0]   = 2;
+  testParamList<bool, bool>( "PicPartition",               vvencParams.m_picPartitionFlag,           vvencParams, { 1 }, true );
 
   fillEncoderParameters( vvencParams, false );
+
+  testParamList( "RPR",                                    vvencParams.m_rprEnabledFlag,             vvencParams, { -1, 0, 1 } );
+  testParamList( "RPR",                                    vvencParams.m_rprEnabledFlag,             vvencParams, { -2, 2, 3 }, true );
 
 //  testParamList( "ThreadCount",                            vvencParams.m_ThreadCount,                vvencParams, { 0,1,2,64 } );
 //  testParamList( "ThreadCount",                            vvencParams.m_ThreadCount,                vvencParams, { -1,65 }, true );
@@ -300,7 +317,7 @@ int testLibParameterRanges()
   testParamList( "TicksPerSecond",                         vvencParams.m_TicksPerSecond,             vvencParams, { -1,0, 50, 27000001 }, true );
 
   vvencParams.m_RCTargetBitrate = 0;
-  testParamList( "useHrdParametersPresent",                   vvencParams.m_hrdParametersPresent,       vvencParams, { 1 }, true );
+  testParamList( "useHrdParametersPresent",                   vvencParams.m_hrdParametersPresent,       vvencParams, { 0, 1 } );
   testParamList<bool, bool>( "useBufferingPeriodSEIEnabled",  vvencParams.m_bufferingPeriodSEIEnabled,  vvencParams, { true }, true );
   testParamList<bool, bool>( "usePictureTimingSEIEnabled",    vvencParams.m_pictureTimingSEIEnabled,    vvencParams, { true }, true );
 
@@ -768,6 +785,115 @@ int checkSDKDefaultBehaviourRC()
   return 0;
 }
 
+int checkSDKStringApiDefault()
+{
+  vvenc_config c;
+  vvenc_init_default( &c, 176,144,60, 500000, 32, vvencPresetMode::VVENC_MEDIUM );
+
+  std::vector <std::tuple<std::string, std::string>> settings;
+  settings.push_back(std::make_tuple( VVENC_OPT_SIZE,         "176x144") );
+  settings.push_back(std::make_tuple( VVENC_OPT_WIDTH,        "176") );
+  settings.push_back(std::make_tuple( VVENC_OPT_HEIGHT,       "144") );
+  settings.push_back(std::make_tuple( VVENC_OPT_FRAMERATE,    "60") );
+  settings.push_back(std::make_tuple( VVENC_OPT_FRAMESCALE,   "1") );
+  settings.push_back(std::make_tuple( VVENC_OPT_FPS,          "60/1") );
+  settings.push_back(std::make_tuple( VVENC_OPT_TICKSPERSEC,  "900000") );
+  settings.push_back(std::make_tuple( VVENC_OPT_INPUTBITDEPTH,"10") );
+  settings.push_back(std::make_tuple( VVENC_OPT_FRAMES,       "2") );
+  settings.push_back(std::make_tuple( VVENC_OPT_PRESET,       "medium") );
+  settings.push_back(std::make_tuple( VVENC_OPT_THREADS,      "1") );
+  settings.push_back(std::make_tuple( VVENC_OPT_BITRATE,      "1000000") );
+  settings.push_back(std::make_tuple( VVENC_OPT_BITRATE,      "1M") );
+  settings.push_back(std::make_tuple( VVENC_OPT_BITRATE,      "1.5Mbps") );
+  settings.push_back(std::make_tuple( VVENC_OPT_BITRATE,      "1000k") );
+  settings.push_back(std::make_tuple( VVENC_OPT_BITRATE,      "1500.5kbps") );
+
+  settings.push_back(std::make_tuple( VVENC_OPT_QP,           "32") );
+  settings.push_back(std::make_tuple( VVENC_OPT_TILES,        "1x0") );
+  settings.push_back(std::make_tuple( VVENC_OPT_VERBOSITY,    "verbose") );
+
+  settings.push_back(std::make_tuple( VVENC_OPT_PROFILE,      "auto") );
+  settings.push_back(std::make_tuple( VVENC_OPT_LEVEL,        "auto") );
+  settings.push_back(std::make_tuple( VVENC_OPT_TIER,         "main") );
+
+  settings.push_back(std::make_tuple( VVENC_OPT_INTRAPERIOD,         "0") );
+  settings.push_back(std::make_tuple( VVENC_OPT_REFRESHDSEC,         "1") );
+  settings.push_back(std::make_tuple( VVENC_OPT_DECODINGREFRESHTYPE, "cra") );
+  settings.push_back(std::make_tuple( VVENC_OPT_GOPSIZE,              "32") );
+
+  settings.push_back(std::make_tuple( VVENC_OPT_QPA,              "off") );
+  settings.push_back(std::make_tuple( VVENC_OPT_RCPASSES,         "2") );
+  settings.push_back(std::make_tuple( VVENC_OPT_RCPASS,           "1") );
+  settings.push_back(std::make_tuple( VVENC_OPT_INTERNALBITDEPTH, "10") );
+  settings.push_back(std::make_tuple( VVENC_OPT_HDR,              "off") );
+  settings.push_back(std::make_tuple( VVENC_OPT_SEGMENT,          "off") );
+
+  for( auto & d : settings )
+  {
+    std::string key = std::get<0>(d);
+    std::string value = std::get<1>(d);
+    int parse_ret = vvenc_set_param( &c, key.c_str(), value.c_str() );
+    switch (parse_ret)
+    {
+      case VVENC_PARAM_BAD_NAME:
+        return -1;
+      case VVENC_PARAM_BAD_VALUE:
+        return -1;
+      default:
+        break;
+    }
+  }
+
+  if( vvenc_init_config_parameter( &c ) )
+  {
+    return -1;
+  }
+
+  return 0;
+}
+
+int checkSDKStringApiInvalid()
+{
+  vvenc_config c;
+  vvenc_init_default( &c, 176,144,60, 500000, 32, vvencPresetMode::VVENC_MEDIUM );
+
+  std::vector <std::tuple<std::string, std::string>> settings;
+  settings.push_back(std::make_tuple( VVENC_OPT_SIZE,         "176t144") );
+  settings.push_back(std::make_tuple( VVENC_OPT_PRESET,       "MED") );
+  settings.push_back(std::make_tuple( VVENC_OPT_BITRATE,      "1apple") );
+  settings.push_back(std::make_tuple( VVENC_OPT_BITRATE,      "1;5M") );
+  settings.push_back(std::make_tuple( VVENC_OPT_BITRATE,      "1m") );
+  settings.push_back(std::make_tuple( VVENC_OPT_BITRATE,      "1K") );
+
+  int ret=0;
+
+  for( auto & d : settings )
+  {
+    std::string key = std::get<0>(d);
+    std::string value = std::get<1>(d);
+    int parse_ret = vvenc_set_param( &c, key.c_str(), value.c_str() );
+    switch (parse_ret)
+    {
+      case VVENC_PARAM_BAD_NAME:
+        ret = -1;
+        break;
+      case VVENC_PARAM_BAD_VALUE:
+        ret = -1;
+        break;
+      default:
+        return 0; // expecting an error - if no error something went wrong
+        break;
+    }
+  }
+
+  if( vvenc_init_config_parameter( &c ) )
+  {
+    return -1;
+  }
+
+  return ret;
+}
+
 
 int testLibCallingOrder()
 {
@@ -790,9 +916,20 @@ int testSDKDefaultBehaviour()
   return 0;
 }
 
+
+int testStringApiInterface()
+{
+  testfunc( "checkSDKStringApiDefault", &checkSDKStringApiDefault, false );
+  testfunc( "checkSDKStringApiInvalid", &checkSDKStringApiInvalid, true );
+
+  return 0;
+}
+
 int inputBufTest( vvencYUVBuffer* pcYuvPicture )
 {
   vvenc_config vvencParams;
+  vvenc_config_default( &vvencParams );
+
   fillEncoderParameters( vvencParams );
 
   vvencEncoder *enc = vvenc_encoder_create();
@@ -827,7 +964,7 @@ int inputBufTest( vvencYUVBuffer* pcYuvPicture )
 }
 
 
-int invaildInputUninitialzedInputPic( )
+int invalidInputUninitialzedInputPic( )
 {
   vvencYUVBuffer *pcYuvPicture = vvenc_YUVBuffer_alloc();
   if( 0 != inputBufTest( pcYuvPicture ))
@@ -841,7 +978,7 @@ int invaildInputUninitialzedInputPic( )
   return 0;
 }
 
-int invaildInputInvalidPicSize( )
+int invalidInputInvalidPicSize( )
 {
   int16_t dummy = 0;
 
@@ -861,7 +998,7 @@ int invaildInputInvalidPicSize( )
   return 0;
 }
 
-int invaildInputInvalidLumaStride( )
+int invalidInputInvalidLumaStride( )
 {
   int16_t dummy = 0;
   vvencYUVBuffer *pcYuvPicture = vvenc_YUVBuffer_alloc();
@@ -884,7 +1021,7 @@ int invaildInputInvalidLumaStride( )
 }
 
 
-int invaildInputInvalidChromaStride( )
+int invalidInputInvalidChromaStride( )
 {
   int16_t dummy = 0;
   vvencYUVBuffer *pcYuvPicture = vvenc_YUVBuffer_alloc();
@@ -910,9 +1047,11 @@ int invaildInputInvalidChromaStride( )
 }
 
 
-int invaildInputBuf( )
+int invalidldInputBuf( )
 {
   vvenc_config vvencParams;
+  vvenc_config_default( &vvencParams );
+
   fillEncoderParameters( vvencParams );
 
   vvencEncoder *enc = vvenc_encoder_create();
@@ -950,12 +1089,12 @@ int invaildInputBuf( )
 
 int testInvalidInputParams()
 {
-  testfunc( "invaildInputUninitialzedInputPic",              &invaildInputUninitialzedInputPic,         true );
-  testfunc( "invaildInputInvalidPicSize",                    &invaildInputInvalidPicSize,               true );
+  testfunc( "invalidInputUninitialzedInputPic",              &invalidInputUninitialzedInputPic,         true );
+  testfunc( "invalidInputInvalidPicSize",                    &invalidInputInvalidPicSize,               true );
 
-  testfunc( "invaildInputInvalidPicSize",                    &invaildInputInvalidPicSize,               true );
-  testfunc( "invaildInputInvalidLumaStride",                 &invaildInputInvalidLumaStride,            true );
-  testfunc( "invaildInputInvalidChromaStride",               &invaildInputInvalidChromaStride,          true );
+  testfunc( "invalidInputInvalidPicSize",                    &invalidInputInvalidPicSize,               true );
+  testfunc( "invalidInputInvalidLumaStride",                 &invalidInputInvalidLumaStride,            true );
+  testfunc( "invalidInputInvalidChromaStride",               &invalidInputInvalidChromaStride,          true );
  
   return 0;
 }

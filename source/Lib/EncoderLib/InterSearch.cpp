@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software,
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2019-2021, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V.
+Copyright (c) 2019-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -827,7 +823,7 @@ Distortion InterSearch::xPatternRefinement( const CPelBuf* pcPatternKey,
 
   Pel*  piRefPos;
   int iRefStride = pcPatternKey->width + 1;
-  m_pcRdCost->setDistParam( m_cDistParam, *pcPatternKey, m_filteredBlock[0][0][0], iRefStride, m_lumaClpRng.bd, COMP_Y, 0, m_pcEncCfg->m_bUseHADME && bAllowUseOfHadamard );
+  m_pcRdCost->setDistParam( m_cDistParam, *pcPatternKey, m_filteredBlock[0][0][0], iRefStride, m_lumaClpRng.bd, COMP_Y, 0, m_pcEncCfg->m_bUseHADME && bAllowUseOfHadamard ? ( m_pcEncCfg->m_fastHad ? 2 : 1 ) : 0 );
 
   const ClpRng& clpRng = m_lumaClpRng;
   int width = pattern->width;
@@ -1027,6 +1023,7 @@ Distortion InterSearch::xPatternRefinement( const CPelBuf* pcPatternKey,
 //! search of the best candidate for inter prediction
 bool InterSearch::predInterSearch(CodingUnit& cu, Partitioner& partitioner, double& bestCostInter)
 {
+  PROFILER_SCOPE_AND_STAGE_EXT( 1, _TPROF, P_INTER_MVD_SEARCH, cu.cs, partitioner.chType );
   CodingStructure& cs = *cu.cs;
 
   AMVPInfo     amvp[2];
@@ -1222,7 +1219,7 @@ bool InterSearch::predInterSearch(CodingUnit& cu, Partitioner& partitioner, doub
         int L = (cu.slice->TLayer <= 2) ? 0 : (cu.slice->TLayer - 2);
         double besCostMerge = bestCostInter;
         bestCostInter = (uiCost[0] < uiCost[1]) ? uiCost[0] : uiCost[1];
-        if ((cu.slice->TLayer > (log2(m_pcEncCfg->m_GOPSize) - (m_pcEncCfg->m_FastInferMerge & 7))) && bestCostInter > MRG_FAST_RATIOMYV[L] * besCostMerge)
+        if ((cu.slice->TLayer > (m_pcEncCfg->m_maxTLayer - (m_pcEncCfg->m_FastInferMerge & 7))) && bestCostInter > MRG_FAST_RATIOMYV[L] * besCostMerge)
         {
           m_skipPROF = false;
           m_encOnly = false;
@@ -1232,6 +1229,7 @@ bool InterSearch::predInterSearch(CodingUnit& cu, Partitioner& partitioner, doub
       //  Bi-predictive Motion estimation
       if( cs.slice->isInterB() && !CU::isBipredRestriction( cu ) && (cu.slice->checkLDC || BcwIdx == BCW_DEFAULT  || !m_affineModeSelected || m_pcEncCfg->m_BCW != 2 ) )
       {
+        PROFILER_SCOPE_AND_STAGE_EXT( 1, _TPROF, P_INTER_MVD_SEARCH_B, &cs, partitioner.chType );
         bool doBiPred = true;
         cMvBi[0] = cMv[0];
         cMvBi[1] = cMv[1];
@@ -1641,7 +1639,7 @@ bool InterSearch::predInterSearch(CodingUnit& cu, Partitioner& partitioner, doub
     }
     if (cu.Y().width > 8 && cu.Y().height > 8 && cu.slice->sps->Affine && checkAffine)
     {
-      PROFILER_SCOPE_AND_STAGE_EXT( 1, g_timeProfiler, P_INTER_MVD_SEARCH_AFFINE, &cs, partitioner.chType );
+      PROFILER_SCOPE_AND_STAGE_EXT( 1, _TPROF, P_INTER_MVD_SEARCH_AFFINE, &cs, partitioner.chType );
       m_hevcCost = uiHevcCost;
       // save normal hevc result
       uint32_t uiMRGIndex = cu.mergeIdx;
@@ -1988,7 +1986,7 @@ void InterSearch::xMotionEstimation(CodingUnit& cu, CPelUnitBuf& origBuf, RefPic
     origBufTmp.copyFrom(origBuf);
     origBufTmp.removeHighFreq( otherBuf, m_pcEncCfg->m_bClipForBiPredMeEnabled, cu.slice->clpRngs );
    
-    origBufTmpCnst = m_tmpStorageLCU.getCompactBuf( cu );
+    origBufTmpCnst = origBufTmp;
     pBuf           = &origBufTmpCnst;
     fWeight        = xGetMEDistortionWeight( cu.BcwIdx, refPicList );
   }
@@ -2769,7 +2767,7 @@ void InterSearch::xPatternSearchIntRefine(CodingUnit& cu, TZSearchStruct&  cStru
   CHECK( cu.imv == 0 || cu.imv == IMV_HPEL , "xPatternSearchIntRefine(): Sub-pel MV used.");
   CHECK( amvpInfo.mvCand[riMVPIdx] != rcMvPred, "xPatternSearchIntRefine(): MvPred issue.");
 
-  m_pcRdCost->setDistParam(m_cDistParam, *cStruct.pcPatternKey, cStruct.piRefY, cStruct.iRefStride, m_lumaClpRng.bd, COMP_Y, 0, m_pcEncCfg->m_bUseHADME && !cu.cs->slice->disableSATDForRd);
+  m_pcRdCost->setDistParam(m_cDistParam, *cStruct.pcPatternKey, cStruct.piRefY, cStruct.iRefStride, m_lumaClpRng.bd, COMP_Y, 0, m_pcEncCfg->m_bUseHADME && !cu.cs->slice->disableSATDForRd ? ( m_pcEncCfg->m_fastHad ? 2 : 1 ) : 0 );
 
   // -> set MV scale for cost calculation to QPEL (0)
   m_pcRdCost->setCostScale ( 0 );
@@ -2872,7 +2870,7 @@ void InterSearch::xPatternSearchFracDIF(
   Distortion&           ruiCost
 )
 {
-  PROFILER_SCOPE_AND_STAGE( 0, g_timeProfiler, P_FRAC_PEL );
+  PROFILER_SCOPE_AND_STAGE( 0, _TPROF, P_FRAC_PEL );
 
   //  Reference pattern initialization (integer scale)
   int         iOffset    = rcMvInt.hor + rcMvInt.ver * cStruct.iRefStride;
@@ -2896,7 +2894,7 @@ void InterSearch::xPatternSearchFracDIF(
   //  quarter-pel refinement
   if( cStruct.imvShift == IMV_OFF && 0 != patternId )
   {
-    PROFILER_SCOPE_AND_STAGE( 0, g_timeProfiler, P_QPEL );
+    PROFILER_SCOPE_AND_STAGE( 0, _TPROF, P_QPEL );
     m_pcRdCost->setCostScale( 0 );
     xExtDIFUpSamplingQ( &cPatternRoi, rcMvHalf, patternId );
     baseRefMv = rcMvHalf;
@@ -3088,7 +3086,7 @@ void InterSearch::xSymMotionEstimation( CodingUnit& cu, CPelUnitBuf& origBuf, Mv
 */
 void InterSearch::xExtDIFUpSamplingH(CPelBuf* pattern, bool useAltHpelIf)
 {
-  PROFILER_SCOPE_AND_STAGE( 0, g_timeProfiler, P_HPEL_INTERP );
+  PROFILER_SCOPE_AND_STAGE( 0, _TPROF, P_HPEL_INTERP );
   const ClpRng& clpRng = m_lumaClpRng;
   int width      = pattern->width;
   int height     = pattern->height;
@@ -3146,7 +3144,7 @@ void InterSearch::xExtDIFUpSamplingH(CPelBuf* pattern, bool useAltHpelIf)
 */
 void InterSearch::xExtDIFUpSamplingQ( CPelBuf* pattern, Mv halfPelRef, int& patternId )
 {
-  PROFILER_SCOPE_AND_STAGE( 0, g_timeProfiler, P_QPEL_INTERP );
+  PROFILER_SCOPE_AND_STAGE( 0, _TPROF, P_QPEL_INTERP );
   const ClpRng& clpRng = m_lumaClpRng;
   int width      = pattern->width;
   int height     = pattern->height;
@@ -4924,11 +4922,11 @@ void InterSearch::xPredAffineInterSearch( CodingUnit& cu,
           Mv mvTmp[3], *nbMv = mvInfo->affMVs[iRefList][iRefIdxTemp];
           int vx, vy;
           int dMvHorX, dMvHorY, dMvVerX, dMvVerY;
-          int mvScaleHor = nbMv[0].hor << shift;
-          int mvScaleVer = nbMv[0].ver << shift;
+          int mvScaleHor = nbMv[0].hor * (1<< shift);
+          int mvScaleVer = nbMv[0].ver * (1<< shift);
           Mv dMv = nbMv[1] - nbMv[0];
-          dMvHorX = dMv.hor << (shift - Log2(mvInfo->w));
-          dMvHorY = dMv.ver << (shift - Log2(mvInfo->w));
+          dMvHorX = dMv.hor *(1<<(shift - Log2(mvInfo->w)));
+          dMvHorY = dMv.ver *(1<< (shift - Log2(mvInfo->w)));
           dMvVerX = -dMvHorY;
           dMvVerY = dMvHorX;
           vx = mvScaleHor + dMvHorX * (cu.Y().x - mvInfo->x) + dMvVerX * (cu.Y().y - mvInfo->y);
@@ -4967,8 +4965,8 @@ void InterSearch::xPredAffineInterSearch( CodingUnit& cu,
         mvAffine4Para[iRefList][iRefIdxTemp][1].roundAffinePrecInternal2Amvr(cu.imv);
 
         int shift = MAX_CU_DEPTH;
-        int vx2 = (mvFour[0].hor << shift) - ((mvFour[1].ver - mvFour[0].ver) << (shift + Log2(cu.lheight()) - Log2(cu.lwidth())));
-        int vy2 = (mvFour[0].ver << shift) + ((mvFour[1].hor - mvFour[0].hor) << (shift + Log2(cu.lheight()) - Log2(cu.lwidth())));
+        int vx2 = (mvFour[0].hor * (1<< shift)) - ((mvFour[1].ver - mvFour[0].ver) * (1<< (shift + Log2(cu.lheight()) - Log2(cu.lwidth()))));
+        int vy2 = (mvFour[0].ver * (1<< shift)) + ((mvFour[1].hor - mvFour[0].hor) * (1<< (shift + Log2(cu.lheight()) - Log2(cu.lwidth()))));
         int offset = (1 << (shift - 1));
         vx2 = (vx2 + offset - (vx2 >= 0)) >> shift;
         vy2 = (vy2 + offset - (vy2 >= 0)) >> shift;
@@ -5559,7 +5557,7 @@ void InterSearch::xAffineMotionEstimation(CodingUnit& cu,
     origBufTmp.copyFrom(origBuf);
     origBufTmp.removeHighFreq(otherBuf, m_pcEncCfg->m_bClipForBiPredMeEnabled, cu.slice->clpRngs);
 
-    origBufTmpCnst = m_tmpStorageLCU.getCompactBuf(cu);
+    origBufTmpCnst = origBufTmp;
     pBuf           = &origBufTmpCnst;
     fWeight        = xGetMEDistortionWeight(cu.BcwIdx, refPicList);
   }
@@ -5719,11 +5717,11 @@ void InterSearch::xAffineMotionEstimation(CodingUnit& cu,
     const int multiShift = 1 << normShiftTab[cu.imv];
     const int mvShift = stepShiftTab[cu.imv];
 
-    acDeltaMv[0] = Mv((int)(dDeltaMv[0] * multiShift + SIGN(dDeltaMv[0]) * 0.5) << mvShift, (int)(dDeltaMv[2] * multiShift + SIGN(dDeltaMv[2]) * 0.5) << mvShift);
-    acDeltaMv[1] = Mv((int)(dDeltaMv[1] * multiShift + SIGN(dDeltaMv[1]) * 0.5) << mvShift, (int)(dDeltaMv[3] * multiShift + SIGN(dDeltaMv[3]) * 0.5) << mvShift);
+    acDeltaMv[0] = Mv((int)(dDeltaMv[0] * multiShift + SIGN(dDeltaMv[0]) * 0.5) * (1<< mvShift), (int)(dDeltaMv[2] * multiShift + SIGN(dDeltaMv[2]) * 0.5) * (1<< mvShift));
+    acDeltaMv[1] = Mv((int)(dDeltaMv[1] * multiShift + SIGN(dDeltaMv[1]) * 0.5) * (1<< mvShift), (int)(dDeltaMv[3] * multiShift + SIGN(dDeltaMv[3]) * 0.5) * (1<< mvShift));
     if (extParams)
     {
-      acDeltaMv[2] = Mv((int)(dDeltaMv[4] * multiShift + SIGN(dDeltaMv[4]) * 0.5) << mvShift, (int)(dDeltaMv[5] * multiShift + SIGN(dDeltaMv[5]) * 0.5) << mvShift);
+      acDeltaMv[2] = Mv((int)(dDeltaMv[4] * multiShift + SIGN(dDeltaMv[4]) * 0.5) *  (1<< mvShift), (int)(dDeltaMv[5] * multiShift + SIGN(dDeltaMv[5]) * 0.5) *  (1<< mvShift));
     }
     bool bAllZero = false;
     for (int i = 0; i < mvNum; i++)
@@ -5870,7 +5868,7 @@ void InterSearch::xAffineMotionEstimation(CodingUnit& cu,
 
           for (int i = ((iter == 0) ? 0 : 4); i < ((iter == 0) ? 4 : 8); i++)
           {
-            acMvTemp[j].set(centerMv[j].hor + (testPos[i][0] << mvShift), centerMv[j].ver + (testPos[i][1] << mvShift));
+            acMvTemp[j].set(centerMv[j].hor + (testPos[i][0] * (1 << mvShift)), centerMv[j].ver + (testPos[i][1] * (1 << mvShift)));
             clipMv(acMvTemp[j], cu.lumaPos(), cu.lumaSize(), *cu.cs->pcv);
             xPredAffineBlk(COMP_Y, cu, refPic, acMvTemp, predBuf, false, cu.slice->clpRngs[COMP_Y], refPicList);
 

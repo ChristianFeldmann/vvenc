@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software,
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2019-2021, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V.
+Copyright (c) 2019-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -1334,7 +1330,7 @@ static void simdFilter( const ClpRng& clpRng, Pel const *src, int srcStride, Pel
   else
   {
     shift -= ( isFirst ) ? headRoom : 0;
-    offset = ( isFirst ) ? -IF_INTERNAL_OFFS << shift : 0;
+    offset = ( isFirst ) ? -IF_INTERNAL_OFFS * (1<< shift) : 0;
   }
 
   if (biMCForDMVR)
@@ -1511,14 +1507,14 @@ void simdFilter4x4_N6( const ClpRng& clpRng, Pel const *src, int srcStride, Pel*
   {
     shift1st  -= headRoom;
     shift2nd  += headRoom;
-    offset1st  = -IF_INTERNAL_OFFS << shift1st;
+    offset1st  = -IF_INTERNAL_OFFS *(1<< shift1st);
     offset2nd  = 1 << ( shift2nd - 1 );
     offset2nd += IF_INTERNAL_OFFS << IF_FILTER_PREC;
   }
   else
   {
     shift1st -= headRoom;
-    offset1st = -IF_INTERNAL_OFFS << shift1st;
+    offset1st = -IF_INTERNAL_OFFS *(1<< shift1st);
     offset2nd = 0;
   }
 
@@ -1775,14 +1771,14 @@ void simdFilter4x4_N4( const ClpRng& clpRng, Pel const *src, int srcStride, Pel*
   {
     shift1st  -= headRoom;
     shift2nd  += headRoom;
-    offset1st  = -IF_INTERNAL_OFFS << shift1st;
+    offset1st  = -IF_INTERNAL_OFFS *(1<< shift1st);
     offset2nd  = 1 << ( shift2nd - 1 );
     offset2nd += IF_INTERNAL_OFFS << IF_FILTER_PREC;
   }
   else
   {
     shift1st -= headRoom;
-    offset1st = -IF_INTERNAL_OFFS << shift1st;
+    offset1st = -IF_INTERNAL_OFFS *(1<< shift1st);
     offset2nd = 0;
   }
 
@@ -2044,7 +2040,7 @@ void simdFilter16xX_N8( const ClpRng& clpRng, Pel const *src, int srcStride, Pel
   // negative for bit depths greater than 14, shift will remain non-negative for bit depths of 8->20
 
   shift1st -= headRoom;
-  offset1st = -IF_INTERNAL_OFFS << shift1st;
+  offset1st = -IF_INTERNAL_OFFS *(1<< shift1st);
 
   if( isLast )
   {
@@ -2079,8 +2075,8 @@ void simdFilter16xX_N8( const ClpRng& clpRng, Pel const *src, int srcStride, Pel
 
     for( int i = 0; i < 8; i += 2 )
     {
-      vcoeffh[i/2] = ( coeffH[i] & 0xffff ) | ( coeffH[i+1] << 16 );
-      vcoeffv[i/2] = ( coeffV[i] & 0xffff ) | ( coeffV[i+1] << 16 );
+      vcoeffh[i/2] = ( coeffH[i] & 0xffff ) | ( coeffH[i+1] *(1<< 16) );
+      vcoeffv[i/2] = ( coeffV[i] & 0xffff ) | ( coeffV[i+1] *(1<< 16) );
     }
 
     for( int row = 0; row < extHeight; row++ )
@@ -2156,11 +2152,112 @@ void simdFilter16xX_N8( const ClpRng& clpRng, Pel const *src, int srcStride, Pel
   else
 #endif
   {
+#if 1
+    const int filterSpan = 7;
+
+    _mm_prefetch( ( const char* ) src + srcStride, _MM_HINT_T0 );
+    _mm_prefetch( ( const char* ) src + (width >> 1) + srcStride, _MM_HINT_T0 );
+    _mm_prefetch( ( const char* ) src + width + filterSpan + srcStride, _MM_HINT_T0 );
+
+    const __m128i voffset1 = _mm_set1_epi32( offset1st );
+    const __m128i vibdimin = _mm_set1_epi16( clpRng.min );
+    const __m128i vibdimax = _mm_set1_epi16( clpRng.max );
+    const __m128i vshuf0   = _mm_set_epi8  ( 0x9, 0x8, 0x7, 0x6, 0x7, 0x6, 0x5, 0x4, 0x5, 0x4, 0x3, 0x2, 0x3, 0x2, 0x1, 0x0 );
+    const __m128i vshuf1   = _mm_set_epi8  ( 0xd, 0xc, 0xb, 0xa, 0xb, 0xa, 0x9, 0x8, 0x9, 0x8, 0x7, 0x6, 0x7, 0x6, 0x5, 0x4 );
+
+    int32_t vcoeffh[4];
+    int32_t vcoeffv[4];
+
+    for( int i = 0; i < 8; i += 2 )
+    {
+      vcoeffh[i/2] = ( coeffH[i] & 0xffff ) | ( coeffH[i+1] << 16 );
+      vcoeffv[i/2] = ( coeffV[i] & 0xffff ) | ( coeffV[i+1] << 16 );
+    }
+
+    __m128i vsum, vsuma, vsumb;
+
+    __m128i vsrcv[2][8];
+
+    for( int row = 0; row < extHeight; row++ )
+    {
+      _mm_prefetch( ( const char* ) src + 2 * srcStride, _MM_HINT_T0 );
+
+      for( int j = 0; j < 2; j++ )
+      {
+        __m128i vsrca0, vsrca1, vsrcb0, vsrcb1;
+        __m128i vsrc0 = _mm_loadu_si128( ( const __m128i* ) &src[(j << 3) + 0] );
+        __m128i vsrc1 = _mm_loadu_si128( ( const __m128i* ) &src[(j << 3) + 4] );
+
+        vsrca0 = _mm_shuffle_epi8 ( vsrc0, vshuf0 );
+        vsrca1 = _mm_shuffle_epi8 ( vsrc0, vshuf1 );  
+        vsrc0  = _mm_loadu_si128  ( ( const __m128i* ) &src[(j << 3) + 8] );
+        vsuma  = _mm_add_epi32    ( _mm_madd_epi16( vsrca0, _mm_set1_epi32( vcoeffh[0] ) ), _mm_madd_epi16( vsrca1, _mm_set1_epi32( vcoeffh[1] ) ) );
+        vsrcb0 = _mm_shuffle_epi8 ( vsrc1, vshuf0 );
+        vsrcb1 = _mm_shuffle_epi8 ( vsrc1, vshuf1 );
+        vsumb  = _mm_add_epi32    ( _mm_madd_epi16( vsrcb0, _mm_set1_epi32( vcoeffh[0] ) ), _mm_madd_epi16( vsrcb1, _mm_set1_epi32( vcoeffh[1] ) ) );
+        vsrc1  = _mm_add_epi32    ( _mm_madd_epi16( vsrcb0, _mm_set1_epi32( vcoeffh[2] ) ), _mm_madd_epi16( vsrcb1, _mm_set1_epi32( vcoeffh[3] ) ) );
+        vsrca0 = _mm_shuffle_epi8 ( vsrc0, vshuf0 );
+        vsrca1 = _mm_shuffle_epi8 ( vsrc0, vshuf1 );
+        vsrc0  = _mm_add_epi32    ( _mm_madd_epi16( vsrca0, _mm_set1_epi32( vcoeffh[2] ) ), _mm_madd_epi16( vsrca1, _mm_set1_epi32( vcoeffh[3] ) ) );
+        vsuma  = _mm_add_epi32    ( vsuma, vsrc1 );
+        vsumb  = _mm_add_epi32    ( vsumb, vsrc0 );
+
+        vsuma  = _mm_add_epi32    ( vsuma, voffset1 );
+        vsumb  = _mm_add_epi32    ( vsumb, voffset1 );
+
+        vsuma  = _mm_srai_epi32   ( vsuma, shift1st );
+        vsumb  = _mm_srai_epi32   ( vsumb, shift1st );
+
+        vsum   = _mm_packs_epi32  ( vsuma, vsumb );
+
+        if( row < 7 )
+        {
+          vsrcv[j][row + 1] = vsum;
+        }
+        else
+        {
+          for( int i = 0; i < 7; i++ )
+          {
+            vsrcv[j][i] = vsrcv[j][i + 1];
+          }
+          vsrcv[j][7] = vsum;
+
+          vsuma = vsumb = _mm_set1_epi32( offset2nd );
+
+          for( int i = 0; i < 8; i += 2 )
+          {
+            vsrca0 = _mm_unpacklo_epi16( vsrcv[j][i], vsrcv[j][i+1] );
+            vsrcb0 = _mm_unpackhi_epi16( vsrcv[j][i], vsrcv[j][i+1] );
+
+            vsuma = _mm_add_epi32( vsuma, _mm_madd_epi16( vsrca0, _mm_set1_epi32( vcoeffv[i / 2] ) ) );
+            vsumb = _mm_add_epi32( vsumb, _mm_madd_epi16( vsrcb0, _mm_set1_epi32( vcoeffv[i / 2] ) ) );
+          }
+
+          vsuma = _mm_srai_epi32( vsuma, shift2nd );
+          vsumb = _mm_srai_epi32( vsumb, shift2nd );
+
+          vsum = _mm_packs_epi32( vsuma, vsumb );
+
+          if( isLast ) //clip
+          {
+            vsum = _mm_min_epi16( vibdimax, _mm_max_epi16( vibdimin, vsum ) );
+          }
+
+          _mm_storeu_si128( ( __m128i* ) &dst[j << 3], vsum );
+
+          dst += j * dstStride;
+        }
+      }
+
+      src += srcStride;
+    }
+#else
     Pel* tmp = ( Pel* ) alloca( 16 * extHeight * sizeof( Pel ) );
     VALGRIND_MEMCLEAR( tmp, 16 * extHeight * sizeof( Pel ) );
 
     simdInterpolateHorM8<vext, 8, false >( src, srcStride, tmp, 16, 16, extHeight, shift1st, offset1st, clpRng, coeffH );
     simdInterpolateVerM8<vext, 8, isLast>( tmp, 16, dst, dstStride, 16,    height, shift2nd, offset2nd, clpRng, coeffV );
+#endif
   }
 }
 
@@ -2179,7 +2276,7 @@ void simdFilter16xX_N4( const ClpRng& clpRng, Pel const *src, int srcStride, Pel
   // negative for bit depths greater than 14, shift will remain non-negative for bit depths of 8->20
 
   shift1st -= headRoom;
-  offset1st = -IF_INTERNAL_OFFS << shift1st;
+  offset1st = -IF_INTERNAL_OFFS *(1<< shift1st);
 
   if( isLast )
   {
@@ -2226,7 +2323,7 @@ void simdFilter8xX_N8( const ClpRng& clpRng, Pel const *src, int srcStride, Pel*
   // negative for bit depths greater than 14, shift will remain non-negative for bit depths of 8->20
 
   shift1st -= headRoom;
-  offset1st = -IF_INTERNAL_OFFS << shift1st;
+  offset1st = -IF_INTERNAL_OFFS * (1<< shift1st);
 
   if( isLast )
   {
@@ -2263,8 +2360,8 @@ void simdFilter8xX_N8( const ClpRng& clpRng, Pel const *src, int srcStride, Pel*
 
     for( int i = 0; i < 8; i += 2 )
     {
-      vcoeffh[i / 2] = ( coeffH[i] & 0xffff ) | ( coeffH[i + 1] << 16 );
-      vcoeffv[i / 2] = ( coeffV[i] & 0xffff ) | ( coeffV[i + 1] << 16 );
+      vcoeffh[i / 2] = ( coeffH[i] & 0xffff ) | ( coeffH[i + 1] *(1<< 16 ));
+      vcoeffv[i / 2] = ( coeffV[i] & 0xffff ) | ( coeffV[i + 1] *(1<< 16) );
     }
 
     for( int row = 0; row < extHeight; row++ )
@@ -2340,11 +2437,111 @@ void simdFilter8xX_N8( const ClpRng& clpRng, Pel const *src, int srcStride, Pel*
   else
 #endif
   {
+#if 1
+    const int filterSpan = 7;
+
+    _mm_prefetch( ( const char * ) src + srcStride, _MM_HINT_T0 );
+    _mm_prefetch( ( const char * ) src + ( width >> 1 ) + srcStride, _MM_HINT_T0 );
+    _mm_prefetch( ( const char * ) src + width + filterSpan + srcStride, _MM_HINT_T0 );
+
+    const __m128i voffset1 = _mm_set1_epi32( offset1st );
+    const __m128i voffset2 = _mm_set1_epi32( offset2nd );
+    const __m128i vibdimin = _mm_set1_epi16( clpRng.min );
+    const __m128i vibdimax = _mm_set1_epi16( clpRng.max );
+
+    const __m128i vshuf0 = _mm_set_epi8( 0x9, 0x8, 0x7, 0x6, 0x7, 0x6, 0x5, 0x4, 0x5, 0x4, 0x3, 0x2, 0x3, 0x2, 0x1, 0x0 );
+    const __m128i vshuf1 = _mm_set_epi8( 0xd, 0xc, 0xb, 0xa, 0xb, 0xa, 0x9, 0x8, 0x9, 0x8, 0x7, 0x6, 0x7, 0x6, 0x5, 0x4 );
+
+    int vcoeffv[4];
+    int vcoeffh[4];
+
+    for( int i = 0; i < 8; i += 2 )
+    {
+      vcoeffh[i / 2] = ( coeffH[i] & 0xffff ) | ( coeffH[i + 1] << 16 );
+      vcoeffv[i / 2] = ( coeffV[i] & 0xffff ) | ( coeffV[i + 1] << 16 );
+    }
+
+    __m128i vsum, vsuma, vsumb;
+
+    __m128i vsrcv[8];
+
+    for( int row = 0; row < extHeight; row++ )
+    {
+      _mm_prefetch( ( const char * ) src + 2 * srcStride, _MM_HINT_T0 );
+
+      __m128i vsrca0, vsrca1, vsrcb0, vsrcb1;
+      __m128i vsrc0 = _mm_loadu_si128( ( const __m128i * ) & src[0] );
+      __m128i vsrc1 = _mm_loadu_si128( ( const __m128i * ) & src[4] );
+
+      vsrca0 = _mm_shuffle_epi8( vsrc0, vshuf0 );
+      vsrca1 = _mm_shuffle_epi8( vsrc0, vshuf1 );
+      vsrc0 = _mm_loadu_si128( ( const __m128i * ) & src[8] );
+      vsuma = _mm_add_epi32( _mm_madd_epi16( vsrca0, _mm_set1_epi32( vcoeffh[0] ) ), _mm_madd_epi16( vsrca1, _mm_set1_epi32( vcoeffh[1] ) ) );
+      vsrcb0 = _mm_shuffle_epi8( vsrc1, vshuf0 );
+      vsrcb1 = _mm_shuffle_epi8( vsrc1, vshuf1 );
+      vsumb = _mm_add_epi32( _mm_madd_epi16( vsrcb0, _mm_set1_epi32( vcoeffh[0] ) ), _mm_madd_epi16( vsrcb1, _mm_set1_epi32( vcoeffh[1] ) ) );
+      vsrc1 = _mm_add_epi32( _mm_madd_epi16( vsrcb0, _mm_set1_epi32( vcoeffh[2] ) ), _mm_madd_epi16( vsrcb1, _mm_set1_epi32( vcoeffh[3] ) ) );
+      vsrca0 = _mm_shuffle_epi8( vsrc0, vshuf0 );
+      vsrca1 = _mm_shuffle_epi8( vsrc0, vshuf1 );
+      vsrc0 = _mm_add_epi32( _mm_madd_epi16( vsrca0, _mm_set1_epi32( vcoeffh[2] ) ), _mm_madd_epi16( vsrca1, _mm_set1_epi32( vcoeffh[3] ) ) );
+      vsuma = _mm_add_epi32( vsuma, vsrc1 );
+      vsumb = _mm_add_epi32( vsumb, vsrc0 );
+
+      vsuma = _mm_add_epi32( vsuma, voffset1 );
+      vsumb = _mm_add_epi32( vsumb, voffset1 );
+
+      vsuma = _mm_srai_epi32( vsuma, shift1st );
+      vsumb = _mm_srai_epi32( vsumb, shift1st );
+
+      vsum = _mm_packs_epi32( vsuma, vsumb );
+
+      if( row < filterSpan )
+      {
+        vsrcv[row + 1] = vsum;
+      }
+      else
+      {
+        for( int i = 0; i < 7; i++ )
+        {
+          vsrcv[i] = vsrcv[i + 1];
+        }
+        vsrcv[7] = vsum;
+
+        vsuma = vsumb = voffset2;
+
+        for( int i = 0; i < 8; i += 2 )
+        {
+          const __m128i vsrca = _mm_unpacklo_epi16( vsrcv[i], vsrcv[i + 1] );
+          const __m128i vsrcb = _mm_unpackhi_epi16( vsrcv[i], vsrcv[i + 1] );
+
+          vsuma = _mm_add_epi32( vsuma, _mm_madd_epi16( vsrca, _mm_set1_epi32( vcoeffv[i / 2] ) ) );
+          vsumb = _mm_add_epi32( vsumb, _mm_madd_epi16( vsrcb, _mm_set1_epi32( vcoeffv[i / 2] ) ) );
+        }
+
+        vsuma = _mm_srai_epi32( vsuma, shift2nd );
+        vsumb = _mm_srai_epi32( vsumb, shift2nd );
+
+        vsum = _mm_packs_epi32( vsuma, vsumb );
+
+        if( isLast ) //clip
+        {
+          vsum = _mm_min_epi16( vibdimax, _mm_max_epi16( vibdimin, vsum ) );
+        }
+
+        _mm_storeu_si128( ( __m128i * ) & dst[0], vsum );
+
+        dst += dstStride;
+      }
+
+      src += srcStride;
+    }
+#else
     Pel* tmp = ( Pel* ) alloca( 8 * extHeight * sizeof( Pel ) );
     VALGRIND_MEMCLEAR( tmp, 8 * extHeight * sizeof( Pel ) );
 
     simdInterpolateHorM8<vext, 8, false >( src, srcStride, tmp, 8, 8, extHeight, shift1st, offset1st, clpRng, coeffH );
     simdInterpolateVerM8<vext, 8, isLast>( tmp, 8, dst, dstStride, 8,    height, shift2nd, offset2nd, clpRng, coeffV );
+#endif
   }
 }
 
@@ -2363,7 +2560,7 @@ void simdFilter8xX_N4( const ClpRng& clpRng, Pel const *src, int srcStride, Pel*
   // negative for bit depths greater than 14, shift will remain non-negative for bit depths of 8->20
 
   shift1st -= headRoom;
-  offset1st = -IF_INTERNAL_OFFS << shift1st;
+  offset1st = -IF_INTERNAL_OFFS *(1<< shift1st);
 
   if( isLast )
   {
@@ -2405,8 +2602,8 @@ void simdFilter8xX_N4( const ClpRng& clpRng, Pel const *src, int srcStride, Pel*
 
     for( int i = 0; i < 4; i += 2 )
     {
-      vcoeffh[i / 2] = ( coeffH[i] & 0xffff ) | ( coeffH[i + 1] << 16 );
-      vcoeffv[i / 2] = ( coeffV[i] & 0xffff ) | ( coeffV[i + 1] << 16 );
+      vcoeffh[i / 2] = ( coeffH[i] & 0xffff ) | ( coeffH[i + 1] *(1<< 16));
+      vcoeffv[i / 2] = ( coeffV[i] & 0xffff ) | ( coeffV[i + 1] *(1<< 16 ));
     }
 
     __m256i vsum;
@@ -2476,11 +2673,111 @@ void simdFilter8xX_N4( const ClpRng& clpRng, Pel const *src, int srcStride, Pel*
   else
 #endif
   {
+    
+#if 1
+    const int filterSpan = 3;
+
+    _mm_prefetch( ( const char* ) src + srcStride, _MM_HINT_T0 );
+    _mm_prefetch( ( const char* ) src + (width >> 1) + srcStride, _MM_HINT_T0 );
+    _mm_prefetch( ( const char* ) src + width + filterSpan + srcStride, _MM_HINT_T0 );
+
+    const __m128i voffset1 = _mm_set1_epi32( offset1st );
+    const __m128i voffset2 = _mm_set1_epi32( offset2nd );
+    const __m128i vibdimin = _mm_set1_epi16( clpRng.min );
+    const __m128i vibdimax = _mm_set1_epi16( clpRng.max );
+    const __m128i vshuf0   = _mm_set_epi8  ( 0x9, 0x8, 0x7, 0x6, 0x7, 0x6, 0x5, 0x4, 0x5, 0x4, 0x3, 0x2, 0x3, 0x2, 0x1, 0x0 );
+    const __m128i vshuf1   = _mm_set_epi8  ( 0xd, 0xc, 0xb, 0xa, 0xb, 0xa, 0x9, 0x8, 0x9, 0x8, 0x7, 0x6, 0x7, 0x6, 0x5, 0x4 );
+    
+    int32_t vcoeffv[2], vcoeffh[2];
+
+    for( int i = 0; i < 4; i += 2 )
+    {
+      vcoeffh[i/2] = ( coeffH[i] & 0xffff ) | ( coeffH[i+1] << 16 );
+      vcoeffv[i/2] = ( coeffV[i] & 0xffff ) | ( coeffV[i+1] << 16 );
+    }
+
+    __m128i vsum, vsuma, vsumb;
+
+    __m128i vsrcv[4];
+
+    for( int row = 0; row < extHeight; row++ )
+    {
+      _mm_prefetch( ( const char* ) src + 2 * srcStride, _MM_HINT_T0 );
+
+      __m128i vtmp02, vtmp13;
+
+      __m128i vsrc0 = _mm_loadu_si128( ( const __m128i* )&src[0] );
+      __m128i vsrc1 = _mm_loadu_si128( ( const __m128i* )&src[4] );
+
+      vtmp02  = _mm_shuffle_epi8( vsrc0, vshuf0 );
+      vtmp13  = _mm_shuffle_epi8( vsrc0, vshuf1 );
+
+      vtmp02  = _mm_madd_epi16  ( vtmp02, _mm_set1_epi32( vcoeffh[0] ) );
+      vtmp13  = _mm_madd_epi16  ( vtmp13, _mm_set1_epi32( vcoeffh[1] ) );
+      vsuma   = _mm_add_epi32   ( vtmp02, vtmp13 );
+      
+      vtmp02  = _mm_shuffle_epi8( vsrc1, vshuf0 );
+      vtmp13  = _mm_shuffle_epi8( vsrc1, vshuf1 );
+
+      vtmp02  = _mm_madd_epi16  ( vtmp02, _mm_set1_epi32( vcoeffh[0] ) );
+      vtmp13  = _mm_madd_epi16  ( vtmp13, _mm_set1_epi32( vcoeffh[1] ) );
+      vsumb   = _mm_add_epi32   ( vtmp02, vtmp13 );
+
+      vsuma   = _mm_add_epi32   ( vsuma, voffset1 );
+      vsumb   = _mm_add_epi32   ( vsumb, voffset1 );
+
+      vsuma   = _mm_srai_epi32  ( vsuma, shift1st );
+      vsumb   = _mm_srai_epi32  ( vsumb, shift1st );
+
+      vsum    = _mm_packs_epi32 ( vsuma, vsumb );
+
+      if( row < 3 )
+      {
+        vsrcv[row + 1] = vsum;
+      }
+      else
+      {
+        for( int i = 0; i < 3; i++ )
+        {
+          vsrcv[i] = vsrcv[i + 1];
+        }
+        vsrcv[3] = vsum;
+
+        vsuma = vsumb = voffset2;
+
+        for( int i = 0; i < 4; i += 2 )
+        {
+          const __m128i vsrca = _mm_unpacklo_epi16( vsrcv[i], vsrcv[i+1] );
+          const __m128i vsrcb = _mm_unpackhi_epi16( vsrcv[i], vsrcv[i+1] );
+
+          vsuma = _mm_add_epi32( vsuma, _mm_madd_epi16( vsrca, _mm_set1_epi32( vcoeffv[i / 2] ) ) );
+          vsumb = _mm_add_epi32( vsumb, _mm_madd_epi16( vsrcb, _mm_set1_epi32( vcoeffv[i / 2] ) ) );
+        }
+
+        vsuma = _mm_srai_epi32( vsuma, shift2nd );
+        vsumb = _mm_srai_epi32( vsumb, shift2nd );
+
+        vsum = _mm_packs_epi32( vsuma, vsumb );
+
+        if( isLast ) //clip
+        {
+          vsum = _mm_min_epi16( vibdimax, _mm_max_epi16( vibdimin, vsum ) );
+        }
+
+        _mm_storeu_si128( ( __m128i * )&dst[0], vsum );
+
+        dst += dstStride;
+      }
+
+      src += srcStride;
+    }
+#else
     Pel* tmp = ( Pel* ) alloca( 8 * extHeight * sizeof( Pel ) );
     VALGRIND_MEMCLEAR( tmp, 8 * extHeight * sizeof( Pel ) );
 
     simdInterpolateHorM8<vext, 4, false >( src, srcStride, tmp, 8, 8, extHeight, shift1st, offset1st, clpRng, coeffH );
     simdInterpolateVerM8<vext, 4, isLast>( tmp, 8, dst, dstStride, 8,    height, shift2nd, offset2nd, clpRng, coeffV );
+#endif
   }
 }
 
@@ -2539,7 +2836,7 @@ void xWeightedGeoBlk_SSE(const ClpRngs &clpRng, const CodingUnit& cu, const uint
   const __m128i mmMax    = _mm_set1_epi16(clpRng.comp[compIdx].max);
 
   if (compIdx != COMP_Y && cu.chromaFormat == CHROMA_420)
-    stepY <<= 1;
+    stepY*= 2;
   if (width == 4)
   {
     // it will occur to chroma only

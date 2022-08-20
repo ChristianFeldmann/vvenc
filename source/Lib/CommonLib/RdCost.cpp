@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software,
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2019-2021, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V.
+Copyright (c) 2019-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -61,6 +57,12 @@ THE POSSIBILITY OF SUCH DAMAGE.
 //! \{
 
 namespace vvenc {
+
+
+template<int csx>
+static Distortion lumaWeightedSSE_Core( const DistParam& rcDtParam, ChromaFormat chmFmt, const uint32_t* lumaWeights );
+
+static Distortion fixWeightedSSE_Core( const DistParam& rcDtParam, uint32_t fixedWeight );
 
 RdCost::RdCost()
   : m_afpDistortFunc{ { nullptr, }, { nullptr, } }
@@ -103,14 +105,23 @@ void RdCost::create()
   m_afpDistortFunc[0][DF_SAD64  ] = RdCost::xGetSAD64;
   m_afpDistortFunc[0][DF_SAD128 ] = RdCost::xGetSAD128;
 
-  m_afpDistortFunc[0][DF_HAD    ] = RdCost::xGetHADs;
-  m_afpDistortFunc[0][DF_HAD2   ] = RdCost::xGetHADs;
-  m_afpDistortFunc[0][DF_HAD4   ] = RdCost::xGetHADs;
-  m_afpDistortFunc[0][DF_HAD8   ] = RdCost::xGetHADs;
-  m_afpDistortFunc[0][DF_HAD16  ] = RdCost::xGetHADs;
-  m_afpDistortFunc[0][DF_HAD32  ] = RdCost::xGetHADs;
-  m_afpDistortFunc[0][DF_HAD64  ] = RdCost::xGetHADs;
-  m_afpDistortFunc[0][DF_HAD128 ] = RdCost::xGetHADs;
+  m_afpDistortFunc[0][DF_HAD    ] = RdCost::xGetHADs<false>;
+  m_afpDistortFunc[0][DF_HAD2   ] = RdCost::xGetHADs<false>;
+  m_afpDistortFunc[0][DF_HAD4   ] = RdCost::xGetHADs<false>;
+  m_afpDistortFunc[0][DF_HAD8   ] = RdCost::xGetHADs<false>;
+  m_afpDistortFunc[0][DF_HAD16  ] = RdCost::xGetHADs<false>;
+  m_afpDistortFunc[0][DF_HAD32  ] = RdCost::xGetHADs<false>;
+  m_afpDistortFunc[0][DF_HAD64  ] = RdCost::xGetHADs<false>;
+  m_afpDistortFunc[0][DF_HAD128 ] = RdCost::xGetHADs<false>;
+
+  m_afpDistortFunc[0][DF_HAD_fast    ] = RdCost::xGetHADs<true>;
+  m_afpDistortFunc[0][DF_HAD2_fast   ] = RdCost::xGetHADs<true>;
+  m_afpDistortFunc[0][DF_HAD4_fast   ] = RdCost::xGetHADs<true>;
+  m_afpDistortFunc[0][DF_HAD8_fast   ] = RdCost::xGetHADs<true>;
+  m_afpDistortFunc[0][DF_HAD16_fast  ] = RdCost::xGetHADs<true>;
+  m_afpDistortFunc[0][DF_HAD32_fast  ] = RdCost::xGetHADs<true>;
+  m_afpDistortFunc[0][DF_HAD64_fast  ] = RdCost::xGetHADs<true>;
+  m_afpDistortFunc[0][DF_HAD128_fast ] = RdCost::xGetHADs<true>;
 
   //  m_afpDistortFunc[0][DF_SAD_INTERMEDIATE_BITDEPTH] = RdCost::xGetSAD;
   m_afpDistortFunc[0][DF_HAD_2SAD ] = RdCost::xGetHAD2SADs;
@@ -118,6 +129,13 @@ void RdCost::create()
   m_afpDistortFunc[0][DF_SAD_WITH_MASK] = RdCost::xGetSADwMask;
   // m_afpDistortFunc[1] can be used in any case
   memcpy( m_afpDistortFunc[1], m_afpDistortFunc[0], sizeof(m_afpDistortFunc)/2);
+
+  m_wtdPredPtr[0] = lumaWeightedSSE_Core<0>;
+  m_wtdPredPtr[1] = lumaWeightedSSE_Core<1>;
+  m_fxdWtdPredPtr = fixWeightedSSE_Core;
+
+  m_afpDistortFuncX5[0] = RdCost::xGetSAD8X5;
+  m_afpDistortFuncX5[1] = RdCost::xGetSAD16X5;
 
 #if ENABLE_SIMD_OPT_DIST
 #ifdef TARGET_SIMD_X86
@@ -138,7 +156,7 @@ static Distortion xMeasurePredSearchSpaceInterceptor( const DistParam& dp )
 }
 
 #endif
-void RdCost::setDistParam( DistParam &rcDP, const CPelBuf& org, const Pel* piRefY, int iRefStride, int bitDepth, ComponentID compID, int subShiftMode, bool useHadamard )
+void RdCost::setDistParam( DistParam &rcDP, const CPelBuf& org, const Pel* piRefY, int iRefStride, int bitDepth, ComponentID compID, int subShiftMode, int useHadamard )
 {
   rcDP.bitDepth   = bitDepth;
   rcDP.compID     = compID;
@@ -161,7 +179,7 @@ void RdCost::setDistParam( DistParam &rcDP, const CPelBuf& org, const Pel* piRef
   }
   else
   {
-    rcDP.distFunc = m_afpDistortFunc[base][ DF_HAD + Log2( org.width ) ];
+    rcDP.distFunc = m_afpDistortFunc[base][( useHadamard == 1 ? DF_HAD : DF_HAD_fast ) + Log2( org.width ) ];
   }
 
   // initialize
@@ -188,7 +206,7 @@ void RdCost::setDistParam( DistParam &rcDP, const CPelBuf& org, const Pel* piRef
   }
   else if( subShiftMode == 2 )
   {
-    if( rcDP.org.height > 8 && rcDP.org.width <= 64 )
+    if( rcDP.org.height > 8 && rcDP.org.width <= 128 )
     {
       rcDP.subShift = 1;
     }
@@ -211,7 +229,7 @@ void RdCost::setDistParam( DistParam &rcDP, const CPelBuf& org, const Pel* piRef
 DistParam RdCost::setDistParam( const CPelBuf& org, const CPelBuf& cur, int bitDepth, DFunc dfunc )
 {
   int index = dfunc;
-  if( dfunc != DF_HAD && dfunc != DF_HAD_2SAD )
+  if( dfunc != DF_HAD && dfunc != DF_HAD_fast && dfunc != DF_HAD_2SAD )
   {
     index += Log2(org.width);
   }
@@ -248,6 +266,11 @@ DistParam RdCost::setDistParam( const Pel* pOrg, const Pel* piRefY, int iOrgStri
   const int base = (rcDP.bitDepth > 10) ? 1 : 0;
 
   rcDP.distFunc = m_afpDistortFunc[base][ DF_SAD + Log2( width ) ];
+  
+  if( isDMVR )
+  {
+    rcDP.dmvrSadX5 = m_afpDistortFuncX5[Log2( width ) - 3];
+  }
 
 #if ENABLE_MEASURE_SEARCH_SPACE
   if( !isDMVR )
@@ -1129,6 +1152,105 @@ static Distortion xCalcHADs4x4( const Pel* piOrg, const Pel* piCur, int iStrideO
   return satd;
 }
 
+static Distortion xCalcHADs16x16_fast( const Pel* piOrg, const Pel* piCur, int iStrideOrg, int iStrideCur )
+{
+  int k, i, j, jj;
+  Distortion sad = 0;
+  TCoeff diff[64], m1[8][8], m2[8][8], m3[8][8];
+
+  for( k = 0; k < 64; k += 8 )
+  {
+    diff[k+0] = ( ( piOrg[ 0] + piOrg[ 0+1] + piOrg[ 0+iStrideOrg] + piOrg[ 0+1+iStrideOrg] + 2 ) >> 2 ) - ( ( piCur[ 0] + piCur[ 0+1] + piCur[ 0+iStrideCur] + piCur[ 0+1+iStrideCur] + 2 ) >> 2 );
+    diff[k+1] = ( ( piOrg[ 2] + piOrg[ 2+1] + piOrg[ 2+iStrideOrg] + piOrg[ 2+1+iStrideOrg] + 2 ) >> 2 ) - ( ( piCur[ 2] + piCur[ 2+1] + piCur[ 2+iStrideCur] + piCur[ 2+1+iStrideCur] + 2 ) >> 2 );
+    diff[k+2] = ( ( piOrg[ 4] + piOrg[ 4+1] + piOrg[ 4+iStrideOrg] + piOrg[ 4+1+iStrideOrg] + 2 ) >> 2 ) - ( ( piCur[ 4] + piCur[ 4+1] + piCur[ 4+iStrideCur] + piCur[ 4+1+iStrideCur] + 2 ) >> 2 );
+    diff[k+3] = ( ( piOrg[ 6] + piOrg[ 6+1] + piOrg[ 6+iStrideOrg] + piOrg[ 6+1+iStrideOrg] + 2 ) >> 2 ) - ( ( piCur[ 6] + piCur[ 6+1] + piCur[ 6+iStrideCur] + piCur[ 6+1+iStrideCur] + 2 ) >> 2 );
+    diff[k+4] = ( ( piOrg[ 8] + piOrg[ 8+1] + piOrg[ 8+iStrideOrg] + piOrg[ 8+1+iStrideOrg] + 2 ) >> 2 ) - ( ( piCur[ 8] + piCur[ 8+1] + piCur[ 8+iStrideCur] + piCur[ 8+1+iStrideCur] + 2 ) >> 2 );
+    diff[k+5] = ( ( piOrg[10] + piOrg[10+1] + piOrg[10+iStrideOrg] + piOrg[10+1+iStrideOrg] + 2 ) >> 2 ) - ( ( piCur[10] + piCur[10+1] + piCur[10+iStrideCur] + piCur[10+1+iStrideCur] + 2 ) >> 2 );
+    diff[k+6] = ( ( piOrg[12] + piOrg[12+1] + piOrg[12+iStrideOrg] + piOrg[12+1+iStrideOrg] + 2 ) >> 2 ) - ( ( piCur[12] + piCur[12+1] + piCur[12+iStrideCur] + piCur[12+1+iStrideCur] + 2 ) >> 2 );
+    diff[k+7] = ( ( piOrg[14] + piOrg[14+1] + piOrg[14+iStrideOrg] + piOrg[14+1+iStrideOrg] + 2 ) >> 2 ) - ( ( piCur[14] + piCur[14+1] + piCur[14+iStrideCur] + piCur[14+1+iStrideCur] + 2 ) >> 2 );
+
+    piCur += 2 * iStrideCur;
+    piOrg += 2 * iStrideOrg;
+  }
+
+  //horizontal
+  for (j=0; j < 8; j++)
+  {
+    jj = j << 3;
+    m2[j][0] = diff[jj  ] + diff[jj+4];
+    m2[j][1] = diff[jj+1] + diff[jj+5];
+    m2[j][2] = diff[jj+2] + diff[jj+6];
+    m2[j][3] = diff[jj+3] + diff[jj+7];
+    m2[j][4] = diff[jj  ] - diff[jj+4];
+    m2[j][5] = diff[jj+1] - diff[jj+5];
+    m2[j][6] = diff[jj+2] - diff[jj+6];
+    m2[j][7] = diff[jj+3] - diff[jj+7];
+
+    m1[j][0] = m2[j][0] + m2[j][2];
+    m1[j][1] = m2[j][1] + m2[j][3];
+    m1[j][2] = m2[j][0] - m2[j][2];
+    m1[j][3] = m2[j][1] - m2[j][3];
+    m1[j][4] = m2[j][4] + m2[j][6];
+    m1[j][5] = m2[j][5] + m2[j][7];
+    m1[j][6] = m2[j][4] - m2[j][6];
+    m1[j][7] = m2[j][5] - m2[j][7];
+
+    m2[j][0] = m1[j][0] + m1[j][1];
+    m2[j][1] = m1[j][0] - m1[j][1];
+    m2[j][2] = m1[j][2] + m1[j][3];
+    m2[j][3] = m1[j][2] - m1[j][3];
+    m2[j][4] = m1[j][4] + m1[j][5];
+    m2[j][5] = m1[j][4] - m1[j][5];
+    m2[j][6] = m1[j][6] + m1[j][7];
+    m2[j][7] = m1[j][6] - m1[j][7];
+  }
+
+  //vertical
+  for (i=0; i < 8; i++)
+  {
+    m3[0][i] = m2[0][i] + m2[4][i];
+    m3[1][i] = m2[1][i] + m2[5][i];
+    m3[2][i] = m2[2][i] + m2[6][i];
+    m3[3][i] = m2[3][i] + m2[7][i];
+    m3[4][i] = m2[0][i] - m2[4][i];
+    m3[5][i] = m2[1][i] - m2[5][i];
+    m3[6][i] = m2[2][i] - m2[6][i];
+    m3[7][i] = m2[3][i] - m2[7][i];
+
+    m1[0][i] = m3[0][i] + m3[2][i];
+    m1[1][i] = m3[1][i] + m3[3][i];
+    m1[2][i] = m3[0][i] - m3[2][i];
+    m1[3][i] = m3[1][i] - m3[3][i];
+    m1[4][i] = m3[4][i] + m3[6][i];
+    m1[5][i] = m3[5][i] + m3[7][i];
+    m1[6][i] = m3[4][i] - m3[6][i];
+    m1[7][i] = m3[5][i] - m3[7][i];
+
+    m2[0][i] = m1[0][i] + m1[1][i];
+    m2[1][i] = m1[0][i] - m1[1][i];
+    m2[2][i] = m1[2][i] + m1[3][i];
+    m2[3][i] = m1[2][i] - m1[3][i];
+    m2[4][i] = m1[4][i] + m1[5][i];
+    m2[5][i] = m1[4][i] - m1[5][i];
+    m2[6][i] = m1[6][i] + m1[7][i];
+    m2[7][i] = m1[6][i] - m1[7][i];
+  }
+
+  for (i = 0; i < 8; i++)
+  {
+    for (j = 0; j < 8; j++)
+    {
+      sad += abs(m2[i][j]);
+    }
+  }
+  
+  sad -= abs( m2[0][0] );
+  sad += abs( m2[0][0] ) >> 2;
+  sad=((sad+2)>>2);
+
+  return (sad << 2);
+}
+
 static Distortion xCalcHADs8x8( const Pel* piOrg, const Pel* piCur, int iStrideOrg, int iStrideCur )
 {
   int k, i, j, jj;
@@ -1679,7 +1801,7 @@ Distortion RdCost::xGetHAD2SADs( const DistParam &rcDtParam )
     THROW(" no support");
   }
 
-  Distortion distHad = xGetHADs( rcDtParam );
+  Distortion distHad = xGetHADs<false>( rcDtParam );
   Distortion distSad = 0;
   {
     CHECKD( (rcDtParam.org.width != rcDtParam.org.stride) || (rcDtParam.cur.stride != rcDtParam.org.stride) , "this functions assumes compact, aligned buffering");
@@ -1722,6 +1844,7 @@ Distortion RdCost::xGetHAD2SADs( const DistParam &rcDtParam )
   return std::min( distHad, 2*distSad);
 }
 
+template<bool fastHad>
 Distortion RdCost::xGetHADs( const DistParam &rcDtParam )
 {
   if( rcDtParam.applyWeight )
@@ -1787,6 +1910,18 @@ Distortion RdCost::xGetHADs( const DistParam &rcDtParam )
       piCur += iStrideCur * 8;
     }
   }
+  else if( fastHad && ( ( iRows % 32 == 0 ) && ( iCols % 32 == 0 ) ) && iRows == iCols )
+  {
+    for( y = 0; y < iRows; y += 16 )
+    {
+      for( x = 0; x < iCols; x += 16 )
+      {
+        uiSum += xCalcHADs16x16_fast( &piOrg[x], &piCur[x], iStrideOrg, iStrideCur );
+      }
+      piOrg += 16 * iStrideOrg;
+      piCur += 16 * iStrideCur;
+    }
+  }
   else if( ( iRows % 8 == 0 ) && ( iCols % 8 == 0 ) )
   {
     for( y = 0; y < iRows; y += 8 )
@@ -1845,12 +1980,9 @@ inline Distortion getWeightedMSE(const Pel org, const Pel cur, const int64_t fix
   return Intermediate_Int((fixedPTweight*(iTemp*iTemp) + (1 << 15)) >> uiShift);
 }
 
-Distortion RdCost::xGetSSE_WTD( const DistParam &rcDtParam ) const
+template<int csx>
+static Distortion lumaWeightedSSE_Core( const DistParam& rcDtParam, ChromaFormat chmFmt, const uint32_t* lumaWeights )
 {
-  if( rcDtParam.applyWeight )
-  {
-    THROW("no support");
-  }
         int  iRows = rcDtParam.org.height;
   const Pel* piOrg = rcDtParam.org.buf;
   const Pel* piCur = rcDtParam.cur.buf;
@@ -1861,62 +1993,131 @@ Distortion RdCost::xGetSSE_WTD( const DistParam &rcDtParam ) const
   const int  iStrideOrgLuma   = rcDtParam.orgLuma->stride;
 
   Distortion uiSum   = 0;
+  uint32_t uiShift   = 16 + (DISTORTION_PRECISION_ADJUSTMENT(rcDtParam.bitDepth) << 1);
+
+  // cf, column factor, offset of the second column, to be set to '0' for width of '1'
+  const int cf =  1 - ( iCols & 1 );
+  CHECK( ( iCols & 1 ) && iCols != 1, "Width can only be even or equal to '1'!" );
+  const ComponentID compId = rcDtParam.compID;
+  const size_t  cShiftY    = getComponentScaleY(compId, chmFmt);
+
+  for( ; iRows != 0; iRows-- )
+  {
+    for (int n = 0; n < iCols; n+=2 )
+    {
+      uiSum += getWeightedMSE( piOrg[n   ], piCur[n   ], lumaWeights[piOrgLuma[(n   )<<csx]], uiShift );
+      uiSum += getWeightedMSE( piOrg[n+cf], piCur[n+cf], lumaWeights[piOrgLuma[(n+cf)<<csx]], uiShift );
+    }
+
+    piOrg     += iStrideOrg;
+    piCur     += iStrideCur;
+    piOrgLuma += iStrideOrgLuma<<cShiftY;
+  }
+
+  return ( uiSum >> ( 1 - cf ) );
+}
+
+static Distortion fixWeightedSSE_Core( const DistParam& rcDtParam, uint32_t fixedPTweight )
+{
+        int  iRows = rcDtParam.org.height;
+  const Pel* piOrg = rcDtParam.org.buf;
+  const Pel* piCur = rcDtParam.cur.buf;
+  const int  iCols = rcDtParam.org.width;
+  const int  iStrideCur = rcDtParam.cur.stride;
+  const int  iStrideOrg = rcDtParam.org.stride;
+
+  Distortion uiSum   = 0;
   uint32_t uiShift = 16 + (DISTORTION_PRECISION_ADJUSTMENT(rcDtParam.bitDepth) << 1);
 
   // cf, column factor, offset of the second column, to be set to '0' for width of '1'
   const int cf =  1 - ( iCols & 1 );
   CHECK( ( iCols & 1 ) && iCols != 1, "Width can only be even or equal to '1'!" );
+  
+  for( ; iRows != 0; iRows-- )
+  {
+    for (int n = 0; n < iCols; n+=2 )
+    {
+      uiSum += getWeightedMSE( piOrg[n   ], piCur[n   ], fixedPTweight, uiShift );
+      uiSum += getWeightedMSE( piOrg[n+cf], piCur[n+cf], fixedPTweight, uiShift );
+    }
+    piOrg += iStrideOrg;
+    piCur += iStrideCur;
+  }
+
+  return ( uiSum >> ( 1 - cf ) );
+}
+
+Distortion RdCost::xGetSSE_WTD( const DistParam &rcDtParam ) const
+{
+  if( rcDtParam.applyWeight )
+  {
+    THROW("no support");
+  }
 
   if ((m_signalType == RESHAPE_SIGNAL_SDR || m_signalType == RESHAPE_SIGNAL_HLG) && rcDtParam.compID != COMP_Y)
   {
-    const int64_t fixedPTweight = (int64_t)(m_chromaWeight * (double)(1 << 16));
+    const int64_t fixedPTweight = ( int64_t ) ( m_chromaWeight * ( double ) ( 1 << 16 ) );
 
-    for( ; iRows != 0; iRows-- )
-    {
-      for (int n = 0; n < iCols; n+=2 )
-      {
-        uiSum += getWeightedMSE( piOrg[n   ], piCur[n   ], fixedPTweight, uiShift );
-        uiSum += getWeightedMSE( piOrg[n+cf], piCur[n+cf], fixedPTweight, uiShift );
-      }
-      piOrg += iStrideOrg;
-      piCur += iStrideCur;
-    }
-  }
-  else if( rcDtParam.compID == COMP_Y )
-  {
-    for( ; iRows != 0; iRows-- )
-    {
-      for (int n = 0; n < iCols; n+=2 )
-      {
-        uiSum += getWeightedMSE( piOrg[n   ], piCur[n   ], m_reshapeLumaLevelToWeightPLUT[piOrgLuma[n   ]], uiShift );
-        uiSum += getWeightedMSE( piOrg[n+cf], piCur[n+cf], m_reshapeLumaLevelToWeightPLUT[piOrgLuma[n+cf]], uiShift );
-      }
-      piOrg += iStrideOrg;
-      piCur += iStrideCur;
-      piOrgLuma += iStrideOrgLuma;
-    }
+    return m_fxdWtdPredPtr( rcDtParam, fixedPTweight );
   }
   else
   {
-    const ComponentID compId = rcDtParam.compID;
-    const size_t  cShiftX = getComponentScaleX(compId,  m_cf);
-    const size_t  cShiftY = getComponentScaleY(compId,  m_cf);
-
-    for( ; iRows != 0; iRows-- )
-    {
-      for (int n = 0; n < iCols; n+=2 )
-      {
-        uiSum += getWeightedMSE( piOrg[n   ], piCur[n   ], m_reshapeLumaLevelToWeightPLUT[piOrgLuma[(n   )<<cShiftX]], uiShift );
-        uiSum += getWeightedMSE( piOrg[n+cf], piCur[n+cf], m_reshapeLumaLevelToWeightPLUT[piOrgLuma[(n+cf)<<cShiftX]], uiShift );
-      }
-      piOrg += iStrideOrg;
-      piCur += iStrideCur;
-      piOrgLuma += iStrideOrgLuma<<cShiftY;
-    }
+    return m_wtdPredPtr[getComponentScaleX(rcDtParam.compID, m_cf)]( rcDtParam, m_cf, m_reshapeLumaLevelToWeightPLUT );
   }
 
-  // if the width is '1', cf is '0', the differences are counted double and need to be normalized
-  return ( uiSum >> ( 1 - cf ) );
+  return 0;
+}
+
+void RdCost::xGetSAD8X5(const DistParam& rcDtParam, Distortion* cost, bool isCalCentrePos) {
+  DistParam rcDtParamTmp0 = rcDtParam;
+
+  DistParam rcDtParamTmp1 = rcDtParam;
+  rcDtParamTmp1.org.buf += 1;
+  rcDtParamTmp1.cur.buf -= 1;
+
+  DistParam rcDtParamTmp2 = rcDtParam;
+  rcDtParamTmp2.org.buf += 2;
+  rcDtParamTmp2.cur.buf -= 2;
+
+  DistParam rcDtParamTmp3 = rcDtParam;
+  rcDtParamTmp3.org.buf += 3;
+  rcDtParamTmp3.cur.buf -= 3;
+
+  DistParam rcDtParamTmp4 = rcDtParam;
+  rcDtParamTmp4.org.buf += 4;
+  rcDtParamTmp4.cur.buf -= 4;
+  
+  cost[0] = (RdCost::xGetSAD8(rcDtParamTmp0)) >> 1;
+  cost[1] = (RdCost::xGetSAD8(rcDtParamTmp1)) >> 1;
+  if (isCalCentrePos) cost[2] = (RdCost::xGetSAD8(rcDtParamTmp2)) >> 1;
+  cost[3] = (RdCost::xGetSAD8(rcDtParamTmp3)) >> 1;
+  cost[4] = (RdCost::xGetSAD8(rcDtParamTmp4)) >> 1;
+}
+
+void RdCost::xGetSAD16X5(const DistParam& rcDtParam, Distortion* cost, bool isCalCentrePos) {
+  DistParam rcDtParamTmp0 = rcDtParam;
+
+  DistParam rcDtParamTmp1 = rcDtParam;
+  rcDtParamTmp1.org.buf += 1;
+  rcDtParamTmp1.cur.buf -= 1;
+
+  DistParam rcDtParamTmp2 = rcDtParam;
+  rcDtParamTmp2.org.buf += 2;
+  rcDtParamTmp2.cur.buf -= 2;
+
+  DistParam rcDtParamTmp3 = rcDtParam;
+  rcDtParamTmp3.org.buf += 3;
+  rcDtParamTmp3.cur.buf -= 3;
+
+  DistParam rcDtParamTmp4 = rcDtParam;
+  rcDtParamTmp4.org.buf += 4;
+  rcDtParamTmp4.cur.buf -= 4;
+  
+  cost[0] = (RdCost::xGetSAD16(rcDtParamTmp0)) >> 1;
+  cost[1] = (RdCost::xGetSAD16(rcDtParamTmp1)) >> 1;
+  if (isCalCentrePos) cost[2] = (RdCost::xGetSAD16(rcDtParamTmp2)) >> 1;
+  cost[3] = (RdCost::xGetSAD16(rcDtParamTmp3)) >> 1;
+  cost[4] = (RdCost::xGetSAD16(rcDtParamTmp4)) >> 1;
 }
 
 void RdCost::setDistParamGeo(DistParam &rcDP, const CPelBuf &org, const Pel *piRefY, int iRefStride, const Pel *mask,

@@ -10,7 +10,13 @@ if( NOT CMAKE_VERSION VERSION_LESS 3.13.0 )
 endif()
 
 # project name
-project( vvenc VERSION 1.2.0 )
+project( vvenc VERSION 1.5.0 )
+
+# set alternative version numbering for release candidates
+#set( PROJECT_VERSION_RC rc1 )
+if( PROJECT_VERSION_RC )
+    set( PROJECT_VERSION "${PROJECT_VERSION}-rc${PROJECT_VERSION_RC}" )
+endif()
 
 set( VVENC_ENABLE_X86_SIMD TRUE )
 set( VVENC_ENABLE_ARM_SIMD FALSE )
@@ -239,6 +245,15 @@ if( VVENC_USE_ADDRESS_SANITIZER )
    add_link_options( "-fsanitize=leak" )
 endif()
 
+# set thread sanitizer compiler arguments
+if( VVENC_USE_THREAD_SANITIZER )
+   # add compile options
+   add_compile_options( "-fno-omit-frame-pointer" )
+   add_compile_options( "-fsanitize=thread" )
+   add_link_options( "-fno-omit-frame-pointer" )
+   add_link_options( "-fsanitize=thread" )
+endif()
+
 # use ccache
 find_program( CCACHE_FOUND ccache )
 if( CCACHE_FOUND )
@@ -289,6 +304,7 @@ add_test( NAME Test_vvenclibtest-paramerter_range COMMAND vvenclibtest 1 )
 add_test( NAME Test_vvenclibtest-calling_order COMMAND vvenclibtest 2 )
 add_test( NAME Test_vvenclibtest-input_params COMMAND vvenclibtest 3 )
 add_test( NAME Test_vvenclibtest-sdk_default COMMAND vvenclibtest 4 )
+add_test( NAME Test_vvenclibtest-sdk_stringapi_interface COMMAND vvenclibtest 5 )
 
 add_test( NAME Test_vvencapp-tooltest COMMAND vvencapp --preset tooltest -s 80x44 -r 15 -i ../../test/data/RTn23_80x44p15_f15.yuv -f 8 -o out.vvc )
 set_tests_properties( Test_vvencapp-tooltest PROPERTIES TIMEOUT 90 )

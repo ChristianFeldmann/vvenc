@@ -1,45 +1,41 @@
 /* -----------------------------------------------------------------------------
-The copyright in this software is being made available under the BSD
+The copyright in this software is being made available under the Clear BSD
 License, included below. No patent rights, trademark rights and/or 
 other Intellectual Property Rights other than the copyrights concerning 
 the Software are granted under this license.
 
-For any license concerning other Intellectual Property rights than the software,
-especially patent licenses, a separate Agreement needs to be closed. 
-For more information please contact:
+The Clear BSD License
 
-Fraunhofer Heinrich Hertz Institute
-Einsteinufer 37
-10587 Berlin, Germany
-www.hhi.fraunhofer.de/vvc
-vvc@hhi.fraunhofer.de
-
-Copyright (c) 2019-2021, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V.
+Copyright (c) 2019-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted (subject to the limitations in the disclaimer below) provided that
+the following conditions are met:
 
- * Redistributions of source code must retain the above copyright notice,
-   this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
- * Neither the name of Fraunhofer nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
+     * Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS
-BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-THE POSSIBILITY OF SUCH DAMAGE.
+     * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+
+     * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from this
+     software without specific prior written permission.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 
 
 ------------------------------------------------------------------------------------------- */
@@ -50,11 +46,16 @@ THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "apputils/YuvFileIO.h"
+#include "apputils/VVEncAppCfg.h"
+
 #include "vvenc/vvenc.h"
 
 #include <algorithm>
 #include <iostream>
+#include <sstream>
+#include <string>
 #include <vector>
+#include <regex>
 
 #if defined (_WIN32) || defined (WIN32) || defined (_WIN64) || defined (WIN64)
 #include <io.h>
@@ -509,17 +510,19 @@ void scaleYuvPlane( vvencYUVPlane& yuvPlaneOut, const vvencYUVPlane& yuvPlaneIn,
 
 int YuvFileIO::open( const std::string &fileName, bool bWriteMode, const int fileBitDepth, const int MSBExtendedBitDepth,
                      const int internalBitDepth, vvencChromaFormat fileChrFmt, vvencChromaFormat bufferChrFmt,
-                     bool clipToRec709, bool packedYUVMode )
+                     bool clipToRec709, bool packedYUVMode, bool y4mMode )
 {
   //NOTE: files cannot have bit depth greater than 16
   m_fileBitdepth        = std::min<unsigned>( fileBitDepth, 16 );
   m_MSBExtendedBitDepth = MSBExtendedBitDepth;
   m_bitdepthShift       = internalBitDepth - m_MSBExtendedBitDepth;
-  m_fileChrFmt          = fileChrFmt; 
-  m_bufferChrFmt        = bufferChrFmt; 
+  m_fileChrFmt          = fileChrFmt;
+  m_bufferChrFmt        = bufferChrFmt;
   m_clipToRec709        = clipToRec709;
   m_packedYUVMode       = packedYUVMode;
   m_readStdin           = false;
+  m_y4mMode             = y4mMode;
+  m_packetCount         = 0;
 
   if( m_packedYUVMode && !bWriteMode && m_fileBitdepth != 10 )
   {
@@ -530,6 +533,12 @@ int YuvFileIO::open( const std::string &fileName, bool bWriteMode, const int fil
   if ( m_fileBitdepth > 16 )
   {
     m_lastError =  "\nERROR: Cannot handle a yuv file of bit depth greater than 16";
+    return -1;
+  }
+
+  if ( m_y4mMode && bWriteMode )
+  {
+    m_lastError =  "\nERROR: Cannot handle y4m yuv output (only support for y4m input)";
     return -1;
   }
 
@@ -565,6 +574,14 @@ int YuvFileIO::open( const std::string &fileName, bool bWriteMode, const int fil
       m_lastError =  "\nFailed to open input YUV file:  " + fileName;
       return -1;
     }
+
+    if ( m_y4mMode || isY4mInputFilename( fileName ) )
+    {
+      std::istream& inStream = m_cHandle;
+      std::string headerline;
+      getline(inStream, headerline);  // jump over y4m header
+      m_y4mMode   = true;
+    }
   }
   return 0;
 }
@@ -590,11 +607,62 @@ bool YuvFileIO::isFail()
   return m_cHandle.fail();
 }
 
-void YuvFileIO::skipYuvFrames( int numFrames, int width, int height  )
+int YuvFileIO::countYuvFrames( int width, int height, bool countFromStart )
+{
+  if( m_readStdin ) return -1;
+  
+  //set the frame size according to the chroma format
+  std::streamoff frameSize      = 0;
+  const int numComp = (m_fileChrFmt==VVENC_CHROMA_400) ? 1 : 3;
+
+  if( m_packedYUVMode)
+  {
+    for ( int i = 0; i < numComp; i++ )
+    {
+      const int csx_file = ( (i == 0) || (m_fileChrFmt==VVENC_CHROMA_444) ) ? 0 : 1;
+      const int csy_file = ( (i == 0) || (m_fileChrFmt!=VVENC_CHROMA_420) ) ? 0 : 1;
+      frameSize += (( ( width * 5 / 4 ) >> csx_file) * (height >> csy_file));
+    }
+  }
+  else
+  {
+    unsigned wordsize             = ( m_fileBitdepth > 8 ) ? 2 : 1;
+    for ( int i = 0; i < numComp; i++ )
+    {
+      const int csx_file = ( (i == 0) || (m_fileChrFmt==VVENC_CHROMA_444) ) ? 0 : 1;
+      const int csy_file = ( (i == 0) || (m_fileChrFmt!=VVENC_CHROMA_420) ) ? 0 : 1;
+      frameSize += ( width >> csx_file ) * ( height >> csy_file );
+    }
+    frameSize *= wordsize;
+  }
+
+  if( m_y4mMode )
+  {
+    const char Y4MHeader[] = {'F','R','A','M','E'};
+    frameSize += (sizeof(Y4MHeader) + 1);  /* assume basic FRAME\n headers */;
+  }
+  
+  std::streamoff lastPos = m_cHandle.tellg();  // backup last position
+  
+  if( countFromStart )
+  {
+    m_cHandle.seekg( 0, std::ios::beg );
+  }
+  std::streamoff curPos = m_cHandle.tellg();
+    
+  m_cHandle.seekg( 0, std::ios::end );
+  std::streamoff filelength = m_cHandle.tellg() - curPos;
+  
+  m_cHandle.seekg( lastPos, std::ios::beg ); // rewind to last pos
+  
+  return filelength / frameSize;
+}
+
+int YuvFileIO::skipYuvFrames( int numFrames, int width, int height )
 {
   if ( numFrames <= 0 )
   {
-    return;
+    return -1;
   }
 
   //set the frame size according to the chroma format
@@ -622,24 +690,47 @@ void YuvFileIO::skipYuvFrames( int numFrames, int width, int height  )
     frameSize *= wordsize;
   }
 
-  const std::streamoff offset = frameSize * numFrames;
-
-  // attempt to seek
-  if ( !! m_cHandle.seekg( offset, std::ios::cur ) )
+  if( m_y4mMode )
   {
-    return; /* success */
+    const char Y4MHeader[] = {'F','R','A','M','E'};
+    frameSize += (sizeof(Y4MHeader) + 1);  /* assume basic FRAME\n headers */;
   }
 
-  m_cHandle.clear();
+  const std::streamoff offset = frameSize * numFrames;
+  
+  std::istream& inStream = m_readStdin ? std::cin : m_cHandle;
+  
+  // check for file size
+  if( !m_readStdin )
+  {
+    std::streamoff fsize = m_cHandle.tellg();
+    m_cHandle.seekg( 0, std::ios::end );
+    std::streamoff filelength = m_cHandle.tellg() - fsize;
+    m_cHandle.seekg( fsize, std::ios::beg );
+    if( offset >= filelength )
+    {
+      return -1;
+    }
+  } 
+
+  // attempt to seek
+  if ( !! inStream.seekg( offset, std::ios::cur ) )
+  {
+    return 0; /* success */
+  }
+
+  inStream.clear();
 
   // fall back to consuming the input
   char buf[ 512 ];
   const std::streamoff offset_mod_bufsize = offset % sizeof( buf );
   for ( std::streamoff i = 0; i < offset - offset_mod_bufsize; i += sizeof( buf ) )
   {
-    m_cHandle.read( buf, sizeof( buf ) );
+    inStream.read( buf, sizeof( buf ) );
   }
-  m_cHandle.read( buf, offset_mod_bufsize );
+  inStream.read( buf, offset_mod_bufsize );
+  
+  return 0;
 }
 
 int YuvFileIO::readYuvBuf( vvencYUVBuffer& yuvInBuf, bool& eof )
@@ -650,7 +741,7 @@ int YuvFileIO::readYuvBuf( vvencYUVBuffer& yuvInBuf, bool& eof )
   {
     m_lastError = "end of file";
     eof = true;
-    return -1;
+    return 0;
   }
 
   if ( m_packedYUVMode &&  ( 0 != (yuvInBuf.planes[0].width >> 1) % 4 ) )
@@ -678,22 +769,26 @@ int YuvFileIO::readYuvBuf( vvencYUVBuffer& yuvInBuf, bool& eof )
       yuvPlane.stride = yuvPlane.width;
     }
 
-    if( m_readStdin )
+    std::istream& inStream = m_readStdin ? std::cin : m_cHandle;
+
+    if( m_y4mMode && comp == 0 )
     {
-      if ( ! readYuvPlane( std::cin, yuvPlane, is16bit, m_fileBitdepth, m_packedYUVMode, comp, m_fileChrFmt, m_bufferChrFmt ) )
+      std::string y4mPrefix;
+      getline(inStream, y4mPrefix);   /* assume basic FRAME\n headers */
+      if( y4mPrefix != "FRAME")
       {
+        m_lastError = "Source image does not contain valid y4m header (FRAME) - end of stream";
         eof = true;
-        return 0;
+        return ( m_packetCount ? 0 : -1); // return error if no frames has been proceeded, otherwise expect eof
       }
     }
-    else
+
+    if ( ! readYuvPlane( inStream, yuvPlane, is16bit, m_fileBitdepth, m_packedYUVMode, comp, m_fileChrFmt, m_bufferChrFmt ) )
     {
-      if ( ! readYuvPlane( m_cHandle, yuvPlane, is16bit, m_fileBitdepth, m_packedYUVMode, comp, m_fileChrFmt, m_bufferChrFmt ) )
-      {
-        eof = true;
-        return 0;
-      }
+      eof = true;
+      return 0;
     }
+
     if ( m_bufferChrFmt == VVENC_CHROMA_400 && comp)
       continue;
 
@@ -706,6 +801,8 @@ int YuvFileIO::readYuvBuf( vvencYUVBuffer& yuvInBuf, bool& eof )
 
     scaleYuvPlane( yuvPlane, yuvPlane, m_bitdepthShift, minVal, maxVal );
   }
+  
+  m_packetCount++;
 
   return 0;
 }
@@ -741,11 +838,219 @@ bool YuvFileIO::writeYuvBuf( const vvencYUVBuffer& yuvOutBuf )
     if ( ! writeYuvPlane( m_cHandle, yuvWriteBuf.planes[ comp ], is16bit, m_fileBitdepth, m_packedYUVMode, comp, m_bufferChrFmt, m_fileChrFmt ) )
       return false;
   }
-
+  
+  m_packetCount++;
   vvenc_YUVBuffer_free_buffer( &yuvScaled );
 
   return true;
 }
+
+bool YuvFileIO::isY4mInputFilename( std::string fileName )
+{
+  return ( "y4m" == getFileExtension(fileName) );
+}
+
+int YuvFileIO::parseY4mHeader( const std::string &fileName, vvenc_config& cfg, VVEncAppCfg& appcfg )
+{
+  std::fstream cfHandle;
+
+  if( fileName == "-" )
+  {
+#if defined (_WIN32) || defined (WIN32) || defined (_WIN64) || defined (WIN64)
+    if( _setmode( _fileno( stdin ), _O_BINARY ) == -1 )
+    {
+      return -1;
+    }
+#endif
+  }
+  else
+  {
+    cfHandle.open( fileName, std::ios::binary | std::ios::in );
+    if( cfHandle.fail() )
+    {
+      return -1;
+    }
+  }
+
+  std::istream& inStream = ( fileName == "-" ) ? std::cin : cfHandle;
+
+  // y4m header syntax example
+  // YUV4MPEG2 W1920 H1080 F50:1 Ip A128:117 C420p10
+
+  // init y4m defaults (if not given in header)
+  cfg.m_inputBitDepth[0]         = 8;
+  appcfg.m_inputFileChromaFormat = VVENC_CHROMA_420;
+
+  std::string headerline;
+  getline(inStream, headerline);
+  if( headerline.empty() ){ return -1; }
+  std::transform( headerline.begin(), headerline.end(), headerline.begin(), ::toupper );
+
+  std::regex reg("\\s+"); // tokenize at spaces
+  std::sregex_token_iterator iter(headerline.begin(), headerline.end(), reg, -1);
+  std::sregex_token_iterator end;
+  std::vector<std::string> vec(iter, end);
+
+  bool valid=false;
+  for (auto &p : vec)
+  {
+    if( p == "YUV4MPEG2" ) // read file signature
+    { valid = true; }
+    else if( p[0] == 'W' ) // width
+      cfg.m_SourceWidth = atoi( p.substr( 1 ).c_str());
+    else if( p[0] == 'H' ) // height
+      cfg.m_SourceHeight = atoi( p.substr( 1 ).c_str());
+    else if( p[0] == 'F' )  // framerate,scale
+    {
+      size_t sep = p.find(":");
+      if( sep == std::string::npos ) return -1;
+      cfg.m_FrameRate  = atoi( p.substr( 1, sep-1 ).c_str());
+      cfg.m_FrameScale = atoi( p.substr( sep+1 ).c_str());
+    }
+    else if( p[0] == 'A' ) // aspcet ration
+    {
+      size_t sep = p.find(":");
+      if( sep == std::string::npos ) return -1;
+      cfg.m_sarWidth  = atoi( p.substr( 1, sep-1 ).c_str());
+      cfg.m_sarHeight = atoi( p.substr( sep+1 ).c_str());
+    }
+    else if( p[0] == 'C' ) // colorspace ( e.g. C420p10)
+    {
+      std::vector<std::string> ignores = {"JPEG", "MPEG2", "PALVD" }; // ignore some special cases
+      for( auto &i : ignores )
+      {
+        auto n = p.find( i );
+        if (n != std::string::npos) p.erase(n, i.length()); // remove from param string (e.g. 420PALVD)
+      }
+
+      size_t sep = p.find("P");
+      std::string chromatype;
+      if( sep != std::string::npos )
+      {
+        chromatype = ( p.substr( 1, sep-1 ).c_str());
+        cfg.m_inputBitDepth[0] = atoi( p.substr( sep+1 ).c_str());
+      }
+      else
+      {
+        sep = p.find("MONO");
+        if( sep != std::string::npos )
+        {
+          chromatype = "400";
+          if( p == "MONO") cfg.m_inputBitDepth[0] = 8;
+          else cfg.m_inputBitDepth[0] = atoi( p.substr( sep+5 ).c_str()); // e.g. mono10
+        }
+        else
+        {
+          chromatype = ( p.substr( 1 ).c_str());
+          cfg.m_inputBitDepth[0] = 8;
+        }
+      }
+
+      if( chromatype == "400" )      { appcfg.m_inputFileChromaFormat =  VVENC_CHROMA_400; }
+      else if( chromatype == "420" ) { appcfg.m_inputFileChromaFormat =  VVENC_CHROMA_420; }
+      else if( chromatype == "422" ) { appcfg.m_inputFileChromaFormat =  VVENC_CHROMA_422; }
+      else if( chromatype == "444" ) { appcfg.m_inputFileChromaFormat =  VVENC_CHROMA_444; }
+      else { return -1; } // unsupported chroma foramt}
+    }
+    else if( p[0] == 'I' ) // interlaced format (ignore it, because we cannot set it in any params
+    {}
+    else if( p[0] == 'X' ) // ignore comments
+    {}
+  }
+
+  if( fileName != "-" )
+  {
+    cfHandle.close();
+  }
+
+  if( !valid ) return -1;
+
+  return (int)headerline.length()+1;
+}
+
+bool YuvFileIO::isY4mHeaderAvailable( std::string fileName )
+{
+  if( fileName == "-" ) return false;
+  std::fstream cfHandle;
+  cfHandle.open( fileName, std::ios::binary | std::ios::in );
+  if( cfHandle.fail() ) return false;
+
+  char line[10] = {0};
+  int headerlinesize = cfHandle.readsome( line, 10 );
+  cfHandle.close();
+
+  if( headerlinesize && memcmp( line, "YUV4MPEG2", 9 ) == 0 ) return true;
+
+  return false;
+}
+
+bool YuvFileIO::checkInputFile( std::string fileName, std::string& rcErrText )
+{
+  if( fileName == "-" ) return true;
+
+  std::stringstream css;
+  std::fstream cfHandle;
+  cfHandle.open( fileName, std::ios::binary | std::ios::in );
+  if( cfHandle.fail() )
+  {
+    css <<"cannot open input file " << fileName;
+    rcErrText = css.str();
+    return false;
+  }
+
+  cfHandle.seekg( 0, std::ios::end );
+  if ( 0 >= cfHandle.tellg() )
+  {
+    css <<"cannot determine valid input file size of file" << fileName;
+    rcErrText = css.str();
+    return false;
+  }
+  cfHandle.close();
+
+  std::string ext = getFileExtension(fileName);
+  std::vector<std::string> unsupportedList { "mp4", "mkv", "ts", "mpeg", "avi" } ;
+  for (auto &e : unsupportedList)
+  {
+    if( e == ext )
+    {
+      css <<"unsupported input file format " << e << " detected. support only for RAW/YUV/Y4M input files.\n";
+      rcErrText = css.str();
+      return false;
+    }
+  }
+  return true;
+}
+
+bool YuvFileIO::checkBitstreamFile( std::string fileName, std::string& rcErrText )
+{
+  if( fileName == "-" ) return true;
+  std::stringstream css;
+  std::string ext = getFileExtension(fileName);
+  std::vector<std::string> unsupportedList { "mp4", "mkv", "ts", "mpeg", "avi" } ;
+  for (auto &e : unsupportedList)
+  {
+    if( e == ext )
+    {
+      css <<"unsupported output file format detected. no support for " << e << " container. RAW ES (e.g. *.vvc, *.266) support only.\n" << fileName;
+      rcErrText = css.str();
+      return false;
+    }
+  }
+
+  return true;
+}
+
+std::string YuvFileIO::getFileExtension( std::string fileName )
+{
+  std::string ext;
+  if(fileName.find_last_of(".") != std::string::npos)
+  {
+    ext = fileName.substr(fileName.find_last_of(".")+1);
+    std::transform( ext.begin(), ext.end(), ext.begin(), ::tolower );
+  }
+  return ext;
+}
+
 
 
 } // namespace apputils
