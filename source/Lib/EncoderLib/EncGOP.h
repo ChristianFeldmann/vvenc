@@ -158,7 +158,7 @@ private:
   int                       m_lastCodingNum;
   int                       m_numPicsCoded;
   int                       m_pocRecOut;
-  int                       m_ticksPerFrameMul4;
+  int                       m_ticksPerFrame;
   int                       m_lastIDR;
   int                       m_lastRasPoc;
   int                       m_pocCRA;

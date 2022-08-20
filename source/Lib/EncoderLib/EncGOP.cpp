@@ -253,7 +253,7 @@ EncGOP::EncGOP( MsgLog& logger )
   , m_lastCodingNum      ( -1 )
   , m_numPicsCoded       ( 0 )
   , m_pocRecOut          ( 0 )
-  , m_ticksPerFrameMul4  ( 0 )
+  , m_ticksPerFrame      ( 0 )
   , m_lastIDR            ( 0 )
   , m_lastRasPoc         ( MAX_INT )
   , m_pocCRA             ( 0 )
@@ -334,7 +334,7 @@ void EncGOP::init( const VVEncCfg& encCfg, const GOPCfg* gopCfg, RateCtrl& rateC
 
   if( m_pcEncCfg->m_FrameRate )
   {
-    m_ticksPerFrameMul4 = (int)((int64_t)4 *(int64_t)m_pcEncCfg->m_TicksPerSecond * (int64_t)m_pcEncCfg->m_FrameScale/(int64_t)m_pcEncCfg->m_FrameRate);
+    m_ticksPerFrame = (int)((int64_t)m_pcEncCfg->m_TicksPerSecond * (int64_t)m_pcEncCfg->m_FrameScale/(int64_t)m_pcEncCfg->m_FrameRate);
   }
 
   m_trySkipOrDecodePicture = ( m_pcEncCfg->m_decodeBitstreams[0][0] != '\0' || m_pcEncCfg->m_decodeBitstreams[1][0] != '\0' )
@@ -2021,7 +2021,7 @@ void EncGOP::xWritePicture( Picture& pic, AccessUnitList& au, bool isEncodeLtRef
     const int64_t iDiffFrames = m_numPicsCoded - pic.poc;
     au.cts      = pic.cts;
     au.ctsValid = pic.ctsValid;
-    au.dts      = ( ( iDiffFrames - m_pcEncCfg->m_maxTLayer ) * m_ticksPerFrameMul4 ) / 4 + au.cts;
+    au.dts      = m_numPicsCoded * m_ticksPerFrame;
     au.dtsValid = pic.ctsValid;
   }
 
